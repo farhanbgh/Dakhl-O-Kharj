@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  
+  body {
+    font-family: "Vazirmatn", "Tahoma", sans-serif;
+  }
+
+  .font-vazir {
+    font-family: "Vazirmatn", "Tahoma", sans-serif;
+  }
+
+  /* Persian number display */
+  .persian-num {
+    font-feature-settings: "ss01";
+  }
+}
+
+@layer utilities {
+  .print-only {
+    display: none;
+  }
+  
+  .no-print {
+    display: block;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  body {
+    font-family: "Vazirmatn", "Tahoma", sans-serif;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* RTL table fix */
+table {
+  direction: rtl;
+}
+
+/* Input focus ring */
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  ring: 2px;
+}
+
+/* Print 80mm receipt */
+@media print {
+  @page {
+    margin: 5mm;
+  }
+  
+  .receipt-print {
+    width: 80mm;
+    max-width: 80mm;
+    font-size: 10px;
+    margin: 0 auto;
+  }
+}
