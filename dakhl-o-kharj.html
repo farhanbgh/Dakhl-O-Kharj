@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>دخل‌وخرج — دفتر روزانه</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#edf3ee; --surface:#fafcfa; --ink:#12281d; --muted:#5b7264; --line:#d2e1d7;
+  --green:#187a50; --green-ink:#ffffff; --deep:#0c3a29; --deep-ink:#e4f1e9; --soft:#dbeee2; --accent:#7be0ad;
+  --exp:#b13d2d; --exp-soft:#f6dfda; --warn:#8f5a00; --warn-soft:#f7e8c8;
+  --shadow:0 12px 40px rgba(6,30,20,.22);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1912; --surface:#14261c; --ink:#e2efe7; --muted:#8fa799; --line:#25412f;
+    --green:#3dbb85; --green-ink:#06231a; --deep:#09261b; --deep-ink:#d6eadf; --soft:#1b3a29; --accent:#7be0ad;
+    --exp:#e88a79; --exp-soft:#3b1f1a; --warn:#e6b652; --warn-soft:#3a2f14;
+    --shadow:0 12px 40px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1912; --surface:#14261c; --ink:#e2efe7; --muted:#8fa799; --line:#25412f;
+  --green:#3dbb85; --green-ink:#06231a; --deep:#09261b; --deep-ink:#d6eadf; --soft:#1b3a29; --accent:#7be0ad;
+  --exp:#e88a79; --exp-soft:#3b1f1a; --warn:#e6b652; --warn-soft:#3a2f14;
+  --shadow:0 12px 40px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Vazirmatn',Tahoma,'Segoe UI',sans-serif;font-size:15px;line-height:1.7;direction:rtl}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+[hidden]{display:none!important}
+h1,h2,h3,p{margin:0}
+
+/* boot */
+#boot{min-height:100vh;display:grid;place-items:center;text-align:center;padding:24px;color:var(--muted)}
+#boot b{display:block;color:var(--ink);font-size:1.2rem;margin-bottom:6px}
+#boot .retry{margin-top:14px}
+
+/* shell */
+.app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+.side{background:var(--deep);color:var(--deep-ink);position:sticky;top:0;height:100vh;padding:22px 14px;display:flex;flex-direction:column;gap:4px}
+.brand{font-weight:700;font-size:1.35rem;padding:2px 12px 18px;color:#fff}
+.brand small{display:block;font-weight:400;font-size:.78rem;color:var(--deep-ink);opacity:.7}
+.nav{display:flex;flex-direction:column;gap:4px}
+.nav button{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;border-inline-start:3px solid transparent;border-radius:10px;padding:10px 12px;color:var(--deep-ink);opacity:.85;cursor:pointer;text-align:start}
+.nav button:hover{background:rgba(255,255,255,.07);opacity:1}
+.nav button.on{background:rgba(255,255,255,.12);border-inline-start-color:var(--accent);opacity:1;color:#fff;font-weight:500}
+.nav svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.foot{margin-top:auto;padding:12px;font-size:.78rem;opacity:.65;line-height:1.6}
+main{padding:26px clamp(14px,3vw,40px) 110px;max-width:1010px;width:100%}
+
+.ph{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+.ph h1{font-size:1.45rem;font-weight:700}
+.ph .sub{color:var(--muted);font-size:.86rem}
+.acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:10px;border:1px solid var(--line);background:var(--surface);padding:8px 16px;cursor:pointer;font-weight:500;transition:background .15s,border-color .15s}
+.btn:hover{border-color:var(--green)}
+.btn.primary{background:var(--green);border-color:var(--green);color:var(--green-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{background:var(--exp);border-color:var(--exp);color:#fff}
+.btn.ghost{background:transparent}
+.btn.sm{padding:3px 12px;font-size:.84rem;border-radius:8px}
+.btn.txt{border-color:transparent;background:none;color:var(--muted);padding:3px 8px;font-size:.84rem}
+.btn.txt:hover{color:var(--ink);border-color:transparent;text-decoration:underline}
+.btn.txt.d:hover{color:var(--exp)}
+
+/* month nav */
+.mnav{display:inline-flex;align-items:center;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:3px}
+.mnav strong{min-width:120px;text-align:center;font-weight:700}
+.mnav button{width:34px;height:34px;display:grid;place-items:center;border:0;background:none;border-radius:9px;cursor:pointer}
+.mnav button:hover{background:var(--soft)}
+.mnav svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+/* summary strip */
+.strip{display:grid;grid-template-columns:repeat(3,1fr);border-block:1px solid var(--line);margin-bottom:26px}
+.strip>div{padding:14px 14px;min-width:0}
+.strip>div+div{border-inline-start:1px solid var(--line)}
+.strip .k{display:block;color:var(--muted);font-size:.84rem}
+.strip b{display:block;font-size:clamp(1.02rem,3.4vw,1.65rem);font-weight:700;overflow-wrap:anywhere;line-height:1.5}
+.strip .u{font-size:.74rem;font-weight:400;color:var(--muted)}
+.inc{color:var(--green)}
+.exp{color:var(--exp)}
+
+.sec{margin-bottom:30px}
+.sec>h2{font-size:1.05rem;font-weight:700;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.legend{display:inline-flex;gap:12px;font-size:.8rem;font-weight:400;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-inline-end:5px;vertical-align:-1px}
+
+/* daily ledger chart */
+.chart{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 10px 8px;display:flex;gap:2px}
+.dcol{flex:1;min-width:0;display:flex;flex-direction:column;border-radius:6px}
+.dcol.today{background:var(--soft)}
+.dcol .up,.dcol .dn{height:74px;display:flex;justify-content:center}
+.dcol .up{align-items:flex-end;border-bottom:1px solid var(--line)}
+.dcol .dn{align-items:flex-start}
+.dcol i{display:block;width:min(72%,14px)}
+.dcol .up i{background:var(--green);border-radius:4px 4px 0 0}
+.dcol .dn i{background:var(--exp);border-radius:0 0 4px 4px}
+.dcol span{font-size:.66rem;color:var(--muted);text-align:center;height:16px;line-height:16px;overflow:visible;white-space:nowrap}
+
+/* category bars */
+.cats{display:grid;gap:10px}
+.cat{display:grid;grid-template-columns:minmax(90px,150px) 1fr auto;gap:10px;align-items:center;font-size:.92rem}
+.cat .t{height:9px;background:var(--soft);border-radius:9px;overflow:hidden}
+.cat .t i{display:block;height:100%;background:var(--exp);border-radius:9px}
+.cat span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* alerts */
+.alerts{display:grid;gap:8px}
+.alert{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;background:var(--surface);border:1px solid var(--line);border-inline-start:5px solid var(--warn);border-radius:12px;padding:10px 14px}
+.alert.over{border-inline-start-color:var(--exp)}
+.alert.cr{border-inline-start-color:var(--green)}
+.alert .who{font-weight:500}
+.alert .who small{display:block;color:var(--muted);font-weight:400;font-size:.8rem}
+.alert .r{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.calm{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:14px 16px;color:var(--muted)}
+.totals{display:flex;flex-wrap:wrap;gap:8px 28px;margin-top:12px;color:var(--muted);font-size:.9rem}
+.totals b{color:var(--ink)}
+
+.pill{display:inline-block;border-radius:999px;padding:1px 11px;font-size:.78rem;font-weight:500;white-space:nowrap}
+.pill.over{background:var(--exp-soft);color:var(--exp)}
+.pill.today,.pill.soon{background:var(--warn-soft);color:var(--warn)}
+.pill.ok,.pill.done{background:var(--soft);color:var(--green)}
+.pill.none{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+
+/* toolbar */
+.tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+.chips{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:2px}
+.chips button{border:0;background:none;padding:4px 14px;border-radius:8px;cursor:pointer;color:var(--muted)}
+.chips button.on{background:var(--green);color:var(--green-ink);font-weight:500}
+.search{flex:1;min-width:160px;max-width:300px}
+
+/* inputs */
+input[type=text],input[type=search],select{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:9px 12px;min-height:42px}
+input:focus,select:focus{border-color:var(--green);outline:2px solid var(--soft);outline-offset:0}
+.field{display:grid;gap:4px;margin-bottom:14px}
+.field>label,.field>.lbl{font-size:.86rem;color:var(--muted)}
+.jdate{display:grid;grid-template-columns:.8fr 1.3fr 1fr;gap:8px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.seg label{position:relative}
+.seg input{position:absolute;opacity:0;inset:0;cursor:pointer}
+.seg span{display:block;text-align:center;padding:9px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-weight:500}
+.seg .e input:checked+span{background:var(--exp);border-color:var(--exp);color:#fff}
+.seg .i input:checked+span{background:var(--green);border-color:var(--green);color:var(--green-ink)}
+.seg input:focus-visible+span{outline:2px solid var(--green);outline-offset:2px}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-bottom:6px}
+.check input{margin-top:6px;accent-color:var(--green)}
+
+/* transaction list */
+.day{margin-bottom:16px}
+.day h3{font-size:.84rem;color:var(--muted);font-weight:500;padding:0 4px 6px}
+.rows{list-style:none;margin:0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.row{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:center;padding:10px 14px}
+.row+.row{border-top:1px solid var(--line)}
+.lead{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;grid-row:span 2}
+.lead svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.lead.in{background:var(--soft);color:var(--green)}
+.lead.out{background:var(--exp-soft);color:var(--exp)}
+.mid{min-width:0}
+.mid b{font-weight:500}
+.mid small{display:block;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.82rem}
+.amt{font-weight:700;text-align:end}
+.amt.in{color:var(--green)}
+.amt.out{color:var(--exp)}
+.racts{grid-column:2/4;display:flex;gap:2px;justify-content:flex-end;margin-top:-4px}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:14px;padding:26px 18px;text-align:center;color:var(--muted)}
+.count{color:var(--muted);font-size:.86rem;margin:0 2px 10px}
+
+/* debt items */
+.items{display:grid;gap:12px}
+.item{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.item .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.item h3{font-size:1.02rem;font-weight:700}
+.item .note{color:var(--muted);font-size:.85rem}
+.nums{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0 8px}
+.nums small{display:block;color:var(--muted);font-size:.78rem}
+.nums b{font-weight:700;overflow-wrap:anywhere}
+.bar{height:8px;background:var(--soft);border-radius:8px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--green);border-radius:8px}
+.meta{display:flex;flex-wrap:wrap;gap:2px 18px;color:var(--muted);font-size:.83rem;margin:8px 0 6px}
+.btns{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+.pays{list-style:none;margin:10px 0 0;padding:8px 0 0;border-top:1px dashed var(--line);display:grid;gap:2px}
+.pays li{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.88rem}
+details.done{margin-top:22px}
+details.done>summary{cursor:pointer;color:var(--muted);margin-bottom:12px}
+
+/* settings */
+.set{display:grid;gap:22px;max-width:620px}
+.set section{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+.set h2{font-size:1rem;margin-bottom:4px}
+.set p{color:var(--muted);font-size:.86rem;margin-bottom:12px}
+.set .field{margin-bottom:0}
+.brow{display:flex;flex-wrap:wrap;gap:8px}
+.banner{background:var(--warn-soft);color:var(--warn);border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:.88rem}
+
+/* fab + toast */
+.fab{position:fixed;left:22px;bottom:22px;z-index:30;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;background:var(--green);color:var(--green-ink);padding:13px 22px;font-weight:700;cursor:pointer;box-shadow:var(--shadow)}
+.fab svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round}
+.fab:hover{filter:brightness(1.08)}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:86px;z-index:60;background:var(--deep);color:#fff;padding:9px 20px;border-radius:999px;font-size:.9rem;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.show{opacity:1}
+
+/* dialog */
+dialog{border:0;border-radius:20px;padding:0;width:min(520px,94vw);max-height:92vh;background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(6,30,20,.55)}
+dialog form{padding:22px}
+dialog h2{font-size:1.15rem;margin-bottom:16px}
+.msg{line-height:1.9;margin-bottom:6px}
+.err{color:var(--exp);background:var(--exp-soft);border-radius:10px;padding:8px 12px;font-size:.88rem;margin:4px 0 10px}
+.fbtns{display:flex;gap:8px;margin-top:8px}
+.fbtns .btn{min-width:110px}
+
+@media (max-width:760px){
+  .app{grid-template-columns:1fr}
+  .side{position:fixed;top:auto;bottom:0;left:0;right:0;height:auto;flex-direction:row;padding:6px 6px calc(6px + env(safe-area-inset-bottom));z-index:40;gap:0;box-shadow:0 -6px 24px rgba(0,0,0,.18)}
+  .brand,.foot{display:none}
+  .nav{flex-direction:row;width:100%;gap:2px}
+  .nav button{flex-direction:column;gap:1px;padding:6px 2px;font-size:.7rem;text-align:center;border-inline-start:0;border-radius:10px}
+  .nav button.on{box-shadow:inset 0 2px 0 var(--accent)}
+  main{padding:16px 14px 150px}
+  .fab{left:14px;bottom:84px;padding:13px}
+  .fab span{display:none}
+  #toast{bottom:150px}
+  .ph h1{font-size:1.25rem}
+  .cat{grid-template-columns:90px 1fr auto}
+  .nums{grid-template-columns:1fr 1fr 1fr}
+  .row{padding:10px 12px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div id="boot"><div><b>دخل‌وخرج</b><span id="bootmsg">در حال آماده‌سازی پایگاه‌داده…</span></div></div>
+
+<div class="app" id="app" hidden>
+  <nav class="side" aria-label="بخش‌ها">
+    <div class="brand">دخل‌وخرج<small>دفتر روزانهٔ درآمد و هزینه</small></div>
+    <div class="nav">
+      <button data-act="nav" data-view="dash"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>داشبورد</span></button>
+      <button data-act="nav" data-view="tx"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>تراکنش‌ها</span></button>
+      <button data-act="nav" data-view="debt"><svg viewBox="0 0 24 24"><path d="M12 4v14M6 13l6 6 6-6"/></svg><span>بدهی‌ها</span></button>
+      <button data-act="nav" data-view="credit"><svg viewBox="0 0 24 24"><path d="M12 20V6M6 11l6-6 6 6"/></svg><span>طلب‌ها</span></button>
+      <button data-act="nav" data-view="set"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span>تنظیمات</span></button>
+    </div>
+    <div class="foot">داده‌ها فقط در همین مرورگر ذخیره می‌شوند. از بخش تنظیمات فایل پشتیبان بگیرید.</div>
+  </nav>
+  <main id="main"></main>
+</div>
+
+<button class="fab" id="fab" data-act="new-tx" hidden aria-label="ثبت تراکنش جدید"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>ثبت جدید</span></button>
+<dialog id="dlg"></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<noscript>برای استفاده از این برنامه باید جاوااسکریپت فعال باشد.</noscript>
+
+<script>
+'use strict';
+// <pure>
+const div=(a,b)=>~~(a/b), mod=(a,b)=>a-~~(a/b)*b;
+const BRK=[-61,9,38,199,426,686,756,818,1111,1181,1210,1635,2060,2097,2192,2262,2324,2394,2456,3178];
+function jalCal(jy,noLeap){
+  const bl=BRK.length, gy=jy+621; let leapJ=-14, jp=BRK[0], jm, jump=0, n, leap;
+  if(jy<jp||jy>=BRK[bl-1]) throw new Error('Invalid Jalaali year');
+  for(let i=1;i<bl;i++){ jm=BRK[i]; jump=jm-jp; if(jy<jm) break; leapJ+=div(jump,33)*8+div(mod(jump,33),4); jp=jm; }
+  n=jy-jp;
+  leapJ+=div(n,33)*8+div(mod(n,33)+3,4);
+  if(mod(jump,33)===4&&jump-n===4) leapJ+=1;
+  const leapG=div(gy,4)-div((div(gy,100)+1)*3,4)-150;
+  const march=20+leapJ-leapG;
+  if(noLeap) return {gy,march};
+  if(jump-n<6) n=n-jump+div(jump+4,33)*33;
+  leap=mod(mod(n+1,33)-1,4); if(leap===-1) leap=4;
+  return {leap,gy,march};
+}
+function g2d(gy,gm,gd){
+  let d=div((gy+div(gm-8,6)+100100)*1461,4)+div(153*mod(gm+9,12)+2,5)+gd-34840408;
+  d=d-div(div(gy+100100+div(gm-8,6),100)*3,4)+752; return d;
+}
+function d2g(jdn){
+  let j=4*jdn+139361631; j=j+div(div(4*jdn+183187720,146097)*3,4)*4-3908;
+  const i=div(mod(j,1461),4)*5+308, gd=div(mod(i,153),5)+1, gm=mod(div(i,153),12)+1, gy=div(j,1461)-100100+div(gm-8,6);
+  return {gy,gm,gd};
+}
+function j2d(jy,jm,jd){ const r=jalCal(jy,true); return g2d(r.gy,3,r.march)+(jm-1)*31-div(jm,7)*(jm-7)+jd-1; }
+function d2j(jdn){
+  const gy=d2g(jdn).gy; let jy=gy-621; const r=jalCal(jy,false), jdn1f=g2d(gy,3,r.march); let k=jdn-jdn1f, jm, jd;
+  if(k>=0){ if(k<=185){ return {jy,jm:1+div(k,31),jd:mod(k,31)+1}; } k-=186; }
+  else { jy-=1; k+=179; if(r.leap===1) k+=1; }
+  jm=7+div(k,30); jd=mod(k,30)+1; return {jy,jm,jd};
+}
+const jLen=(y,m)=>m<=6?31:m<=11?30:(jalCal(y,false).leap===0?30:29);
+const MONTHS=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+const WD=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه'];
+const pad=n=>String(n).padStart(2,'0');
+const jstr=(y,m,d)=>y+'-'+pad(m)+'-'+pad(d);
+const parseJ=s=>{const [y,m,d]=s.split('-').map(Number);return {y,m,d};};
+const jdnOf=s=>{const {y,m,d}=parseJ(s);return j2d(y,m,d);};
+function todayJ(){const t=new Date();const j=d2j(g2d(t.getFullYear(),t.getMonth()+1,t.getDate()));return {y:j.jy,m:j.jm,d:j.jd};}
+const todayStr=()=>{const t=todayJ();return jstr(t.y,t.m,t.d);};
+const daysUntil=s=>jdnOf(s)-jdnOf(todayStr());
+const weekday=s=>WD[(jdnOf(s)+2)%7];
+const FA='۰۱۲۳۴۵۶۷۸۹';
+const fa=s=>String(s).replace(/\d/g,d=>FA[d]);
+const en=s=>String(s).replace(/[۰-۹]/g,d=>FA.indexOf(d)).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+const fmtNum=n=>fa(Math.round(n).toLocaleString('en-US')).replace(/,/g,'٬');
+const parseAmount=s=>Number(en(s).replace(/\D/g,'')||0);
+const fmtJ=s=>{if(!s)return '—';const {y,m,d}=parseJ(s);return fa(y+'/'+pad(m)+'/'+pad(d));};
+const fmtJLong=s=>{const {y,m,d}=parseJ(s);return weekday(s)+' '+fa(d)+' '+MONTHS[m-1];};
+const crcTable=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+function crc32(b){let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=crcTable[(c^b[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+function makeZip(name,data){
+  const enc=new TextEncoder().encode(name), crc=crc32(data), size=data.length, d=new Date();
+  const tm=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1), dt=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+  const loc=new Uint8Array(30+enc.length), lv=new DataView(loc.buffer);
+  lv.setUint32(0,0x04034b50,true);lv.setUint16(4,20,true);lv.setUint16(6,0x0800,true);lv.setUint16(8,0,true);lv.setUint16(10,tm,true);lv.setUint16(12,dt,true);
+  lv.setUint32(14,crc,true);lv.setUint32(18,size,true);lv.setUint32(22,size,true);lv.setUint16(26,enc.length,true);lv.setUint16(28,0,true);loc.set(enc,30);
+  const cen=new Uint8Array(46+enc.length), cv=new DataView(cen.buffer);
+  cv.setUint32(0,0x02014b50,true);cv.setUint16(4,20,true);cv.setUint16(6,20,true);cv.setUint16(8,0x0800,true);cv.setUint16(10,0,true);cv.setUint16(12,tm,true);cv.setUint16(14,dt,true);
+  cv.setUint32(16,crc,true);cv.setUint32(20,size,true);cv.setUint32(24,size,true);cv.setUint16(28,enc.length,true);cv.setUint32(42,0,true);cen.set(enc,46);
+  const end=new Uint8Array(22), ev=new DataView(end.buffer);
+  ev.setUint32(0,0x06054b50,true);ev.setUint16(8,1,true);ev.setUint16(10,1,true);ev.setUint32(12,cen.length,true);ev.setUint32(16,loc.length+size,true);
+  return [loc,data,cen,end];
+}
+// </pure>
+
+// <schema>
+const SCHEMA=`
+CREATE TABLE IF NOT EXISTS transactions(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL CHECK(type IN ('income','expense')),
+  amount INTEGER NOT NULL CHECK(amount>0),
+  category TEXT NOT NULL,
+  date TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(date);
+CREATE TABLE IF NOT EXISTS debts(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL CHECK(kind IN ('debt','credit')),
+  person TEXT NOT NULL,
+  amount INTEGER NOT NULL CHECK(amount>0),
+  start_date TEXT NOT NULL,
+  due_date TEXT,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_debts_kind ON debts(kind, due_date);
+CREATE TABLE IF NOT EXISTS payments(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  debt_id INTEGER NOT NULL,
+  amount INTEGER NOT NULL CHECK(amount>0),
+  date TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  tx_id INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_pay_debt ON payments(debt_id);
+CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+`;
+// </schema>
+
+(()=>{
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const CATS={
+  expense:['خوراک و خرید روزانه','مسکن و اجاره','حمل‌ونقل','قبض و شارژ','سلامت و درمان','آموزش','تفریح و رستوران','پوشاک','هدیه و مناسبت','سایر'],
+  income:['حقوق','فروش','پروژه و کارمزد','سود و بازده','هدیه','سایر']
+};
+const KIND={
+  debt:{title:'بدهی‌های من',one:'بدهی',add:'بدهی جدید',who:'به چه کسی بدهکارم',ph:'نام شخص یا مؤسسه',paid:'پرداخت‌شده',pay:'ثبت پرداخت',payT:'ثبت پرداخت',mirror:'همزمان در هزینه‌ها هم ثبت شود',mirrorCat:'پرداخت بدهی',mirrorType:'expense',start:'تاریخ ایجاد بدهی',from:'بدهی به',empty:'بدهی ثبت‌شده‌ای ندارید.'},
+  credit:{title:'طلب‌های من',one:'طلب',add:'طلب جدید',who:'چه کسی به من بدهکار است',ph:'نام شخص یا مؤسسه',paid:'دریافت‌شده',pay:'ثبت دریافت',payT:'ثبت دریافت',mirror:'همزمان در درآمدها هم ثبت شود',mirrorCat:'دریافت طلب',mirrorType:'income',start:'تاریخ ایجاد طلب',from:'طلب از',empty:'طلب ثبت‌شده‌ای ندارید.'}
+};
+const ICON_UP='<svg viewBox="0 0 24 24"><path d="M12 19V6M6 11l6-6 6 6"/></svg>';
+const ICON_DN='<svg viewBox="0 0 24 24"><path d="M12 5v13M6 13l6 6 6-6"/></svg>';
+const CH_R='<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
+const CH_L='<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>';
+
+const state={view:'dash',ym:null,type:'all',q:'',open:{},storageOk:true,settings:{unit:'تومان',warn:'7'}};
+let SQL=null, db=null, dlP=null;
+
+/* ---------- storage ---------- */
+const IDB={
+  open(){return new Promise((res,rej)=>{if(!window.indexedDB)return rej(new Error('no idb'));const r=indexedDB.open('dakhl-o-kharj',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});},
+  async get(k){const d=await this.open();return new Promise((res,rej)=>{const q=d.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});},
+  async set(k,v){const d=await this.open();return new Promise((res,rej)=>{const t=d.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=()=>res();t.onerror=()=>rej(t.error);});}
+};
+let pt=null;
+function persist(){clearTimeout(pt);pt=setTimeout(flush,250);}
+async function flush(){
+  clearTimeout(pt);
+  try{await IDB.set('db',db.export());if(!state.storageOk){state.storageOk=true;if(state.view==='set')render();}}
+  catch(e){if(state.storageOk){state.storageOk=false;if(state.view==='set')render();toast('ذخیرهٔ خودکار در این مرورگر ممکن نیست؛ فایل پشتیبان بگیرید.');}}
+}
+window.addEventListener('pagehide',flush);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flush();});
+
+/* ---------- db helpers ---------- */
+function all(sql,p=[]){const st=db.prepare(sql);try{st.bind(p);const out=[];while(st.step())out.push(st.getAsObject());return out;}finally{st.free();}}
+function run(sql,p=[]){db.run(sql,p);persist();}
+function lastId(){return db.exec('SELECT last_insert_rowid()')[0].values[0][0];}
+function ensureSchema(){db.exec(SCHEMA);}
+function loadSettings(){for(const r of all('SELECT key,value FROM settings'))state.settings[r.key]=r.value;}
+function setSetting(k,v){state.settings[k]=String(v);run('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)',[k,String(v)]);}
+const unit=()=>state.settings.unit||'تومان';
+const warnDays=()=>Math.max(1,Math.min(90,parseInt(state.settings.warn,10)||7));
+
+const txMonth=(y,m)=>all('SELECT * FROM transactions WHERE date BETWEEN ? AND ? ORDER BY date DESC, id DESC',[jstr(y,m,1),jstr(y,m,31)]);
+function debtRows(kind){
+  return all('SELECT d.*, COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.debt_id=d.id),0) AS paid FROM debts d WHERE d.kind=?',[kind]).map(r=>({...r,remaining:r.amount-r.paid}));
+}
+function categoriesFor(type){
+  const used=all('SELECT DISTINCT category FROM transactions WHERE type=? ORDER BY category',[type]).map(r=>r.category);
+  return [...new Set([...CATS[type],...used])];
+}
+function dueInfo(due,remaining){
+  if(remaining<=0)return {cls:'done',label:'تسویه شد',n:null};
+  if(!due)return {cls:'none',label:'بدون سررسید',n:null};
+  const n=daysUntil(due);
+  if(n<0)return {cls:'over',label:fa(-n)+' روز گذشته',n};
+  if(n===0)return {cls:'today',label:'سررسید امروز',n};
+  return {cls:n<=warnDays()?'soon':'ok',label:fa(n)+' روز دیگر',n};
+}
+
+/* ---------- ui helpers ---------- */
+let tt=null;
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2400);}
+const dlg=$('#dlg');
+function closeDlg(){try{dlg.close();}catch(e){dlg.removeAttribute('open');}}
+function showDlg(title,body,{submit='ثبت',cancel='انصراف',danger=false,onSubmit,onOpen}){
+  dlg.innerHTML='<form novalidate><h2>'+title+'</h2><div>'+body+'</div><p class="err" role="alert" hidden></p><div class="fbtns"><button class="btn '+(danger?'danger':'primary')+'" type="submit">'+submit+'</button><button type="button" class="btn ghost" data-close>'+cancel+'</button></div></form>';
+  const f=dlg.querySelector('form'), err=dlg.querySelector('.err');
+  f.onsubmit=e=>{
+    e.preventDefault();
+    try{const msg=onSubmit(new FormData(f));closeDlg();render();if(msg)toast(msg);}
+    catch(ex){err.textContent=ex.message||'خطا در ثبت';err.hidden=false;}
+  };
+  if(onOpen)onOpen(f);
+  if(typeof dlg.showModal==='function'){if(!dlg.open)dlg.showModal();}else dlg.setAttribute('open','');
+}
+dlg.addEventListener('click',e=>{if(e.target===dlg||e.target.closest('[data-close]'))closeDlg();});
+dlg.addEventListener('input',e=>{if(e.target.matches('.amt-in'))fmtAmountInput(e.target);});
+dlg.addEventListener('change',e=>{
+  const box=e.target.closest('.jdate');if(box)refreshDays(box);
+  if(e.target.name==='type'&&e.target.closest('#txform'))fillCats(e.target.value);
+});
+function confirmDlg(title,msg,label,fn){showDlg(title,'<p class="msg">'+msg+'</p>',{submit:label,danger:true,onSubmit:fn});}
+
+function fmtAmountInput(el){
+  const digitsBefore=en(el.value.slice(0,el.selectionStart||0)).replace(/\D/g,'').length;
+  const raw=en(el.value).replace(/\D/g,'').replace(/^0+(?=\d)/,'').slice(0,13);
+  const out=raw?fmtNum(Number(raw)):'';
+  el.value=out;
+  let pos=0,cnt=0;while(pos<out.length&&cnt<digitsBefore){if(FA.includes(out[pos]))cnt++;pos++;}
+  try{el.setSelectionRange(pos,pos);}catch(e){}
+}
+function amountField(name,label,val){
+  return '<div class="field"><label for="f-'+name+'">'+label+' ('+esc(unit())+')</label><input class="amt-in" id="f-'+name+'" name="'+name+'" type="text" inputmode="numeric" autocomplete="off" placeholder="'+fa('250000').replace(/^(.)(.*)$/,'مثلاً ')+fmtNum(250000)+'" value="'+(val?fmtNum(val):'')+'"></div>';
+}
+function dayOptions(y,m,sel,optional){
+  const n=(y&&m)?jLen(+y,+m):31;let h=optional?'<option value="">روز</option>':'';
+  for(let d=1;d<=n;d++)h+='<option value="'+d+'"'+(+sel===d?' selected':'')+'>'+fa(d)+'</option>';return h;
+}
+function dateField(name,label,val,optional){
+  const t=todayJ(), c=val?parseJ(val):(optional?{y:'',m:'',d:''}:t);
+  let ys=optional?'<option value="">سال</option>':'';
+  const lo=Math.min(t.y-6,c.y||t.y), hi=Math.max(t.y+10,c.y||t.y);
+  for(let y=lo;y<=hi;y++)ys+='<option value="'+y+'"'+(+c.y===y?' selected':'')+'>'+fa(y)+'</option>';
+  let ms=optional?'<option value="">ماه</option>':'';
+  MONTHS.forEach((mn,i)=>{ms+='<option value="'+(i+1)+'"'+(+c.m===i+1?' selected':'')+'>'+mn+'</option>';});
+  return '<div class="field"><span class="lbl">'+label+'</span><div class="jdate" data-opt="'+(optional?1:0)+'"><select name="'+name+'_d" aria-label="روز">'+dayOptions(c.y,c.m,c.d,optional)+'</select><select name="'+name+'_m" aria-label="ماه">'+ms+'</select><select name="'+name+'_y" aria-label="سال">'+ys+'</select></div></div>';
+}
+function refreshDays(box){
+  const [d,m,y]=box.querySelectorAll('select');const cur=d.value;
+  d.innerHTML=dayOptions(y.value,m.value,cur,box.dataset.opt==='1');
+  if(cur&&+cur>jLen(+y.value||1400,+m.value||1))d.value=String(jLen(+y.value||1400,+m.value||1));
+}
+function readDate(fd,name,{optional=false,label='تاریخ'}={}){
+  const y=fd.get(name+'_y'),m=fd.get(name+'_m'),d=fd.get(name+'_d');
+  if(optional&&!y&&!m&&!d)return null;
+  if(!y||!m||!d)throw new Error(label+' را کامل انتخاب کنید.');
+  if(+d>jLen(+y,+m))throw new Error(label+' معتبر نیست.');
+  return jstr(+y,+m,+d);
+}
+function fillCats(type){const dl=$('#cats');if(dl)dl.innerHTML=categoriesFor(type).map(c=>'<option value="'+esc(c)+'">').join('');}
+const monthNav=()=>'<div class="mnav"><button data-act="mprev" aria-label="ماه قبل">'+CH_R+'</button><strong>'+MONTHS[state.ym.m-1]+' '+fa(state.ym.y)+'</strong><button data-act="mnext" aria-label="ماه بعد">'+CH_L+'</button></div>';
+
+/* ---------- views ---------- */
+function viewDash(){
+  const {y,m}=state.ym, list=txMonth(y,m), n=jLen(y,m), today=todayStr();
+  let inc=0,exp=0;const di=new Array(n+1).fill(0),de=new Array(n+1).fill(0),cat={};
+  for(const t of list){const d=+t.date.slice(8);if(t.type==='income'){inc+=t.amount;di[d]+=t.amount;}else{exp+=t.amount;de[d]+=t.amount;cat[t.category]=(cat[t.category]||0)+t.amount;}}
+  const bal=inc-exp, mx=Math.max(1,...di,...de);
+  let bars='';
+  for(let d=1;d<=n;d++){
+    bars+='<div class="dcol'+(jstr(y,m,d)===today?' today':'')+'" title="'+fa(d)+' '+MONTHS[m-1]+' — درآمد: '+fmtNum(di[d])+'، هزینه: '+fmtNum(de[d])+'"><div class="up"><i style="height:'+(di[d]/mx*100)+'%;'+(di[d]?'min-height:3px':'')+'"></i></div><div class="dn"><i style="height:'+(de[d]/mx*100)+'%;'+(de[d]?'min-height:3px':'')+'"></i></div><span>'+(d===1||d%5===0?fa(d):'')+'</span></div>';
+  }
+  const cats=Object.entries(cat).sort((a,b)=>b[1]-a[1]).slice(0,6), cmax=cats.length?cats[0][1]:1;
+  const catHtml=cats.length?'<div class="cats">'+cats.map(([k,v])=>'<div class="cat"><span>'+esc(k)+'</span><span class="t"><i style="width:'+(v/cmax*100)+'%"></i></span><span>'+fmtNum(v)+'</span></div>').join('')+'</div>':'<div class="calm">در این ماه هزینه‌ای ثبت نشده است.</div>';
+
+  const w=warnDays(), debts=debtRows('debt').filter(r=>r.remaining>0), credits=debtRows('credit').filter(r=>r.remaining>0);
+  const due=[...debts.map(r=>({...r,k:'debt'})),...credits.map(r=>({...r,k:'credit'}))].filter(r=>r.due_date&&daysUntil(r.due_date)<=w).sort((a,b)=>daysUntil(a.due_date)-daysUntil(b.due_date));
+  const alerts=due.length?'<div class="alerts">'+due.map(r=>{
+    const inf=dueInfo(r.due_date,r.remaining), over=inf.n<0;
+    return '<div class="alert '+(r.k==='credit'?'cr':over?'over':'')+'"><div class="who">'+KIND[r.k].from+' '+esc(r.person)+'<small>مانده '+fmtNum(r.remaining)+' '+esc(unit())+' — سررسید '+fmtJ(r.due_date)+'</small></div><div class="r"><span class="pill '+inf.cls+'">'+inf.label+'</span><button class="btn sm" data-act="pay" data-id="'+r.id+'">'+KIND[r.k].pay+'</button></div></div>';
+  }).join('')+'</div>':'<div class="calm">سررسیدی در '+fa(w)+' روز آینده ندارید و موردی هم عقب نیفتاده است.</div>';
+  const sum=a=>a.reduce((s,r)=>s+r.remaining,0);
+
+  return '<header class="ph"><h1>داشبورد</h1>'+monthNav()+'</header>'
+  +'<section class="strip" aria-label="خلاصهٔ ماه"><div><span class="k">درآمد</span><b class="inc">'+fmtNum(inc)+'</b></div><div><span class="k">هزینه</span><b class="exp">'+fmtNum(exp)+'</b></div><div><span class="k">'+(bal<0?'کسری ماه':'مانده ماه')+'</span><b class="'+(bal<0?'exp':'inc')+'">'+fmtNum(Math.abs(bal))+' <span class="u">'+esc(unit())+'</span></b></div></section>'
+  +'<section class="sec"><h2>روند روزانه<span class="legend"><span><i style="background:var(--green)"></i>درآمد</span><span><i style="background:var(--exp)"></i>هزینه</span></span></h2><div class="chart" role="img" aria-label="نمودار روزانهٔ درآمد و هزینه '+MONTHS[m-1]+'">'+bars+'</div></section>'
+  +'<section class="sec"><h2>سررسیدهای نزدیک</h2>'+alerts+'<div class="totals"><span>بدهی باز: <b>'+fmtNum(sum(debts))+'</b> '+esc(unit())+'</span><span>طلب باز: <b>'+fmtNum(sum(credits))+'</b> '+esc(unit())+'</span></div></section>'
+  +'<section class="sec"><h2>بیشترین هزینه‌ها در این ماه</h2>'+catHtml+'</section>';
+}
+
+function viewTx(){
+  return '<header class="ph"><h1>تراکنش‌ها</h1>'+monthNav()+'</header>'
+  +'<div class="tools"><div class="chips" role="group" aria-label="نوع">'
+  +[['all','همه'],['income','درآمد'],['expense','هزینه']].map(([k,l])=>'<button data-act="ftype" data-t="'+k+'" class="'+(state.type===k?'on':'')+'">'+l+'</button>').join('')
+  +'</div><input class="search" id="q" type="search" placeholder="جست‌وجو در دسته و توضیح" value="'+esc(state.q)+'" aria-label="جست‌وجو"></div><div id="txlist"></div>';
+}
+function renderTxList(){
+  const {y,m}=state.ym;const q=state.q.trim();
+  let list=txMonth(y,m);
+  if(state.type!=='all')list=list.filter(t=>t.type===state.type);
+  if(q)list=list.filter(t=>(t.category+' '+t.note).includes(q));
+  const box=$('#txlist');if(!box)return;
+  if(!list.length){box.innerHTML='<div class="empty">'+(q||state.type!=='all'?'موردی با این فیلتر پیدا نشد.':'هنوز تراکنشی در این ماه ثبت نشده. با دکمهٔ «ثبت جدید» اولین مورد را اضافه کنید.')+'</div>';return;}
+  const inc=list.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0), exp=list.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const groups=[];for(const t of list){const g=groups[groups.length-1];if(g&&g.date===t.date)g.items.push(t);else groups.push({date:t.date,items:[t]});}
+  box.innerHTML='<p class="count">'+fa(list.length)+' تراکنش — مبالغ به '+esc(unit())+(state.type!=='expense'?' — جمع درآمد: '+fmtNum(inc):'')+(state.type!=='income'?' — جمع هزینه: '+fmtNum(exp):'')+'</p>'
+  +groups.map(g=>'<div class="day"><h3>'+fmtJLong(g.date)+' '+fa(parseJ(g.date).y)+'</h3><ul class="rows">'+g.items.map(t=>{
+    const isIn=t.type==='income';
+    return '<li class="row"><span class="lead '+(isIn?'in':'out')+'" title="'+(isIn?'درآمد':'هزینه')+'">'+(isIn?ICON_UP:ICON_DN)+'</span><div class="mid"><b>'+esc(t.category)+'</b>'+(t.note?'<small>'+esc(t.note)+'</small>':'')+'</div><div class="amt '+(isIn?'in':'out')+'">'+fmtNum(t.amount)+'</div><div class="racts"><button class="btn txt" data-act="edit-tx" data-id="'+t.id+'">ویرایش</button><button class="btn txt d" data-act="del-tx" data-id="'+t.id+'">حذف</button></div></li>';
+  }).join('')+'</ul></div>').join('');
+}
+
+function debtCard(r,kind){
+  const K=KIND[kind], inf=dueInfo(r.due_date,r.remaining), pct=Math.min(100,r.paid/r.amount*100);
+  const pays=state.open[r.id]?all('SELECT * FROM payments WHERE debt_id=? ORDER BY date DESC,id DESC',[r.id]):[];
+  return '<article class="item"><div class="top"><div><h3>'+esc(r.person)+'</h3>'+(r.note?'<p class="note">'+esc(r.note)+'</p>':'')+'</div><span class="pill '+inf.cls+'">'+inf.label+'</span></div>'
+  +'<div class="nums"><div><small>مبلغ کل</small><b>'+fmtNum(r.amount)+'</b></div><div><small>'+K.paid+'</small><b class="inc">'+fmtNum(r.paid)+'</b></div><div><small>مانده</small><b class="'+(r.remaining>0?'exp':'inc')+'">'+fmtNum(r.remaining)+'</b></div></div>'
+  +'<div class="bar" role="img" aria-label="'+fa(Math.round(pct))+' درصد '+K.paid+'"><i style="width:'+pct+'%"></i></div>'
+  +'<div class="meta"><span>سررسید: '+(r.due_date?fmtJ(r.due_date)+' ('+weekday(r.due_date)+')':'تعیین نشده')+'</span><span>ثبت: '+fmtJ(r.start_date)+'</span></div>'
+  +'<div class="btns">'+(r.remaining>0?'<button class="btn sm primary" data-act="pay" data-id="'+r.id+'">'+K.pay+'</button>':'')
+  +'<button class="btn txt" data-act="edit-debt" data-id="'+r.id+'">ویرایش</button><button class="btn txt d" data-act="del-debt" data-id="'+r.id+'">حذف</button>'
+  +'<button class="btn txt" data-act="toggle-pays" data-id="'+r.id+'" aria-expanded="'+(state.open[r.id]?'true':'false')+'">'+(state.open[r.id]?'بستن سابقه':'سابقه')+'</button></div>'
+  +(state.open[r.id]?(pays.length?'<ul class="pays">'+pays.map(p=>'<li><span>'+fmtJ(p.date)+' — '+fmtNum(p.amount)+(p.note?' — '+esc(p.note):'')+'</span><button class="btn txt d" data-act="del-pay" data-id="'+p.id+'">حذف</button></li>').join('')+'</ul>':'<ul class="pays"><li>هنوز '+(kind==='debt'?'پرداختی':'دریافتی')+' ثبت نشده است.</li></ul>'):'')
+  +'</article>';
+}
+function viewDebts(kind){
+  const K=KIND[kind], rows=debtRows(kind);
+  const open=rows.filter(r=>r.remaining>0).sort((a,b)=>(a.due_date||'9999').localeCompare(b.due_date||'9999')||a.id-b.id);
+  const done=rows.filter(r=>r.remaining<=0).sort((a,b)=>b.id-a.id);
+  const total=open.reduce((s,r)=>s+r.remaining,0), late=open.filter(r=>r.due_date&&daysUntil(r.due_date)<0).length;
+  return '<header class="ph"><div><h1>'+K.title+'</h1><p class="sub">مبالغ به '+esc(unit())+'</p></div><div class="acts"><button class="btn primary" data-act="new-debt" data-kind="'+kind+'">+ '+K.add+'</button></div></header>'
+  +'<section class="strip"><div><span class="k">مانده کل</span><b class="'+(kind==='debt'?'exp':'inc')+'">'+fmtNum(total)+'</b></div><div><span class="k">مورد باز</span><b>'+fa(open.length)+'</b></div><div><span class="k">سررسید گذشته</span><b class="'+(late?'exp':'')+'">'+fa(late)+'</b></div></section>'
+  +(open.length?'<div class="items">'+open.map(r=>debtCard(r,kind)).join('')+'</div>':'<div class="empty">'+(done.length?'همهٔ موارد تسویه شده است.':K.empty+' با دکمهٔ «'+K.add+'» شروع کنید.')+'</div>')
+  +(done.length?'<details class="done"><summary>تسویه‌شده‌ها ('+fa(done.length)+')</summary><div class="items">'+done.map(r=>debtCard(r,kind)).join('')+'</div></details>':'');
+}
+function viewSet(){
+  const hosted=!!(dlP&&dlP.value);
+  return '<header class="ph"><h1>تنظیمات و پشتیبان‌گیری</h1></header>'
+  +(state.storageOk?'':'<div class="banner">ذخیرهٔ خودکار در این مرورگر کار نمی‌کند (مثلاً حالت خصوصی). حتماً فایل پشتیبان بگیرید.</div>')
+  +'<div class="set">'
+  +'<section><h2>عمومی</h2><p>واحد نمایش مبالغ و مقدار پیش‌آگاهی سررسیدها.</p><div class="field"><label for="s-unit">واحد پول</label><select id="s-unit"><option'+(unit()==='تومان'?' selected':'')+'>تومان</option><option'+(unit()==='ریال'?' selected':'')+'>ریال</option></select></div><div class="field" style="margin-top:12px"><label for="s-warn">هشدار سررسید: چند روز قبل از موعد نمایش داده شود؟</label><input id="s-warn" type="text" inputmode="numeric" value="'+fa(warnDays())+'" style="max-width:120px"></div></section>'
+  +'<section><h2>دانلود پشتیبان</h2><p>'+(hosted?'فایل SQLite داخل یک ZIP دانلود می‌شود؛ بعد از استخراج، فایل <span dir="ltr">.sqlite</span> را با هر برنامهٔ SQLite (مثل DB Browser) می‌توانید باز کنید.':'فایل کامل پایگاه‌داده (SQLite) را دانلود کنید و هر زمان خواستید بازگردانی کنید.')+'</p><div class="brow"><button class="btn primary" data-act="export-db">دانلود پایگاه‌داده</button><button class="btn" data-act="export-csv">خروجی CSV تراکنش‌ها</button></div></section>'
+  +'<section><h2>بازیابی از فایل</h2><p>فایل <span dir="ltr">.sqlite</span> که قبلاً از همین برنامه گرفته‌اید را انتخاب کنید. داده‌های فعلی جایگزین می‌شوند.</p><label class="btn" for="imp" style="cursor:pointer">انتخاب فایل پشتیبان</label><input id="imp" type="file" accept=".sqlite,.sqlite3,.db" hidden></section>'
+  +'<section><h2>پاک‌کردن همه‌چیز</h2><p>همهٔ تراکنش‌ها، بدهی‌ها و طلب‌ها حذف می‌شود. این کار قابل بازگشت نیست؛ پیش از آن پشتیبان بگیرید.</p><button class="btn txt d" data-act="reset" style="border:1px solid var(--line)">پاک‌کردن همهٔ داده‌ها</button></section>'
+  +'</div>';
+}
+
+function render(){
+  document.querySelectorAll('.nav [data-view]').forEach(b=>{const on=b.dataset.view===state.view;b.classList.toggle('on',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+  const v={dash:viewDash,tx:viewTx,debt:()=>viewDebts('debt'),credit:()=>viewDebts('credit'),set:viewSet}[state.view];
+  $('#main').innerHTML=v();
+  if(state.view==='tx')renderTxList();
+}
+
+/* ---------- dialogs ---------- */
+function txDialog(id){
+  const t=id?all('SELECT * FROM transactions WHERE id=?',[id])[0]:null;
+  const type=t?t.type:'expense';
+  showDlg(t?'ویرایش تراکنش':'ثبت تراکنش جدید',
+    '<div id="txform"><div class="field"><span class="lbl">نوع</span><div class="seg"><label class="e"><input type="radio" name="type" value="expense"'+(type==='expense'?' checked':'')+'><span>هزینه</span></label><label class="i"><input type="radio" name="type" value="income"'+(type==='income'?' checked':'')+'><span>درآمد</span></label></div></div>'
+    +amountField('amount','مبلغ',t?t.amount:0)
+    +'<div class="field"><label for="f-cat">دسته</label><input id="f-cat" name="category" type="text" list="cats" autocomplete="off" placeholder="انتخاب یا نوشتن دستهٔ جدید" value="'+esc(t?t.category:'')+'"><datalist id="cats"></datalist></div>'
+    +dateField('date','تاریخ',t?t.date:todayStr(),false)
+    +'<div class="field"><label for="f-note">توضیح (اختیاری)</label><input id="f-note" name="note" type="text" autocomplete="off" value="'+esc(t?t.note:'')+'"></div></div>',
+    {submit:t?'ذخیره تغییرات':'ثبت',onOpen:()=>fillCats(type),
+     onSubmit(fd){
+       const ty=fd.get('type'), amt=parseAmount(fd.get('amount')), cat=String(fd.get('category')).trim()||'سایر', note=String(fd.get('note')).trim();
+       if(amt<=0)throw new Error('مبلغ را وارد کنید.');
+       const date=readDate(fd,'date');
+       if(t)run('UPDATE transactions SET type=?,amount=?,category=?,date=?,note=? WHERE id=?',[ty,amt,cat,date,note,t.id]);
+       else run('INSERT INTO transactions(type,amount,category,date,note) VALUES(?,?,?,?,?)',[ty,amt,cat,date,note]);
+       const p=parseJ(date);state.ym={y:p.y,m:p.m};
+       return t?'تغییرات ذخیره شد':'ثبت شد';
+     }});
+}
+function delTx(id){
+  const t=all('SELECT * FROM transactions WHERE id=?',[id])[0];if(!t)return;
+  confirmDlg('حذف تراکنش','«'+esc(t.category)+'» به مبلغ '+fmtNum(t.amount)+' '+esc(unit())+' حذف شود؟','حذف',()=>{
+    db.run('UPDATE payments SET tx_id=NULL WHERE tx_id=?',[id]);run('DELETE FROM transactions WHERE id=?',[id]);return 'حذف شد';
+  });
+}
+function debtDialog(kind,id){
+  const K=KIND[kind], r=id?all('SELECT * FROM debts WHERE id=?',[id])[0]:null;
+  showDlg(r?'ویرایش '+K.one:K.add,
+    '<div class="field"><label for="f-person">'+K.who+'</label><input id="f-person" name="person" type="text" autocomplete="off" placeholder="'+K.ph+'" value="'+esc(r?r.person:'')+'"></div>'
+    +amountField('amount','مبلغ کل',r?r.amount:0)
+    +dateField('start',K.start,r?r.start_date:todayStr(),false)
+    +dateField('due','تاریخ سررسید (اختیاری)',r?r.due_date:null,true)
+    +'<div class="field"><label for="f-note">توضیح (اختیاری)</label><input id="f-note" name="note" type="text" autocomplete="off" value="'+esc(r?r.note:'')+'"></div>',
+    {submit:r?'ذخیره تغییرات':'ثبت',
+     onSubmit(fd){
+       const person=String(fd.get('person')).trim(), amt=parseAmount(fd.get('amount')), note=String(fd.get('note')).trim();
+       if(!person)throw new Error('نام را وارد کنید.');
+       if(amt<=0)throw new Error('مبلغ را وارد کنید.');
+       const start=readDate(fd,'start',{label:'تاریخ ایجاد'}), due=readDate(fd,'due',{optional:true,label:'تاریخ سررسید'});
+       if(due&&due<start)throw new Error('سررسید نمی‌تواند قبل از تاریخ ایجاد باشد.');
+       if(r){
+         const paid=all('SELECT COALESCE(SUM(amount),0) AS s FROM payments WHERE debt_id=?',[r.id])[0].s;
+         if(amt<paid)throw new Error('مبلغ کل نمی‌تواند کمتر از '+fmtNum(paid)+' (مجموع '+K.paid+') باشد.');
+         run('UPDATE debts SET person=?,amount=?,start_date=?,due_date=?,note=? WHERE id=?',[person,amt,start,due,note,r.id]);
+       }else run('INSERT INTO debts(kind,person,amount,start_date,due_date,note) VALUES(?,?,?,?,?,?)',[kind,person,amt,start,due,note]);
+       return r?'تغییرات ذخیره شد':'ثبت شد';
+     }});
+}
+function delDebt(id){
+  const r=all('SELECT * FROM debts WHERE id=?',[id])[0];if(!r)return;
+  confirmDlg('حذف '+KIND[r.kind].one,'«'+esc(r.person)+'» با تمام سابقه‌اش حذف شود؟ اگر هنگام ثبت، تراکنش همراه هم ساخته شده باشد، آن هم حذف می‌شود.','حذف',()=>{
+    for(const p of all('SELECT tx_id FROM payments WHERE debt_id=? AND tx_id IS NOT NULL',[id]))db.run('DELETE FROM transactions WHERE id=?',[p.tx_id]);
+    db.run('DELETE FROM payments WHERE debt_id=?',[id]);run('DELETE FROM debts WHERE id=?',[id]);return 'حذف شد';
+  });
+}
+function payDialog(id){
+  const r=debtRows('debt').concat(debtRows('credit')).find(x=>x.id===id);if(!r)return;
+  const K=KIND[r.kind];
+  showDlg(K.payT+' — '+esc(r.person),
+    '<p class="msg">مانده: <b>'+fmtNum(r.remaining)+'</b> '+esc(unit())+'</p>'
+    +amountField('amount','مبلغ',r.remaining)+dateField('date','تاریخ',todayStr(),false)
+    +'<div class="field"><label for="f-note">توضیح (اختیاری)</label><input id="f-note" name="note" type="text" autocomplete="off"></div>'
+    +'<label class="check"><input type="checkbox" name="mirror"><span>'+K.mirror+'</span></label>',
+    {submit:'ثبت',
+     onSubmit(fd){
+       const amt=parseAmount(fd.get('amount')), note=String(fd.get('note')).trim();
+       if(amt<=0)throw new Error('مبلغ را وارد کنید.');
+       if(amt>r.remaining)throw new Error('مبلغ از مانده ('+fmtNum(r.remaining)+') بیشتر است.');
+       const date=readDate(fd,'date');let txId=null;
+       if(fd.get('mirror')){db.run('INSERT INTO transactions(type,amount,category,date,note) VALUES(?,?,?,?,?)',[K.mirrorType,amt,K.mirrorCat,date,r.person]);txId=lastId();}
+       run('INSERT INTO payments(debt_id,amount,date,note,tx_id) VALUES(?,?,?,?,?)',[r.id,amt,date,note,txId]);
+       state.open[r.id]=true;
+       return amt===r.remaining?'تسویه شد':'ثبت شد';
+     }});
+}
+function delPay(id){
+  const p=all('SELECT * FROM payments WHERE id=?',[id])[0];if(!p)return;
+  confirmDlg('حذف ردیف','این ردیف به مبلغ '+fmtNum(p.amount)+' حذف شود؟','حذف',()=>{
+    if(p.tx_id)db.run('DELETE FROM transactions WHERE id=?',[p.tx_id]);run('DELETE FROM payments WHERE id=?',[id]);return 'حذف شد';
+  });
+}
+
+/* ---------- files ---------- */
+async function getDl(){try{return dlP?await dlP.promise:null;}catch(e){return null;}}
+function anchorSave(name,parts,type){
+  const blob=new Blob(parts,{type});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+}
+async function exportDb(){
+  await flush();const bytes=db.export(), stamp=todayStr(), base='dakhl-o-kharj-'+stamp, dl=await getDl();
+  if(dl){
+    try{await dl.save({filename:base+'.zip',data:new Blob(makeZip(base+'.sqlite',bytes),{type:'application/zip'})});toast('پشتیبان ذخیره شد');}
+    catch(e){if(!e||e.code!=='declined')toast('ذخیرهٔ فایل ممکن نشد');}
+  }else{anchorSave(base+'.sqlite',[bytes],'application/x-sqlite3');toast('دانلود شروع شد');}
+}
+async function exportCsv(){
+  const rows=all('SELECT date,type,category,amount,note FROM transactions ORDER BY date,id');
+  const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
+  const csv='\uFEFF'+['تاریخ شمسی,نوع,دسته,مبلغ,توضیح'].concat(rows.map(r=>[r.date,r.type==='income'?'درآمد':'هزینه',q(r.category),r.amount,q(r.note)].join(','))).join('\r\n');
+  const name='transactions-'+todayStr()+'.csv', dl=await getDl();
+  if(dl){try{await dl.save({filename:name,data:csv});toast('فایل ذخیره شد');}catch(e){if(!e||e.code!=='declined')toast('ذخیرهٔ فایل ممکن نشد');}}
+  else{anchorSave(name,[csv],'text/csv;charset=utf-8');toast('دانلود شروع شد');}
+}
+async function importDb(file){
+  let test;
+  try{
+    test=new SQL.Database(new Uint8Array(await file.arrayBuffer()));
+    const r=test.exec("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('transactions','debts','payments')")[0];
+    if(!r||r.values.length<3)throw new Error('x');
+  }catch(e){toast('این فایل، پشتیبان همین برنامه نیست.');return;}
+  confirmDlg('بازیابی از فایل','داده‌های فعلی با محتوای این فایل جایگزین می‌شود. ادامه می‌دهید؟','جایگزین کن',()=>{
+    db.close();db=test;ensureSchema();state.settings={unit:'تومان',warn:'7'};loadSettings();state.open={};flush();return 'بازیابی شد';
+  });
+}
+function resetAll(){
+  confirmDlg('پاک‌کردن همهٔ داده‌ها','همهٔ تراکنش‌ها، بدهی‌ها و طلب‌ها برای همیشه حذف می‌شود. مطمئن هستید؟','بله، پاک شود',()=>{
+    db.close();db=new SQL.Database();ensureSchema();state.settings={unit:'تومان',warn:'7'};state.open={};flush();return 'همه‌چیز پاک شد';
+  });
+}
+
+/* ---------- events ---------- */
+function moveMonth(k){let {y,m}=state.ym;m+=k;if(m>12){m=1;y++;}if(m<1){m=12;y--;}state.ym={y,m};render();}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b)return;
+  const id=+b.dataset.id, act=b.dataset.act;
+  switch(act){
+    case 'nav':state.view=b.dataset.view;render();window.scrollTo(0,0);break;
+    case 'mprev':moveMonth(-1);break;
+    case 'mnext':moveMonth(1);break;
+    case 'new-tx':txDialog();break;
+    case 'edit-tx':txDialog(id);break;
+    case 'del-tx':delTx(id);break;
+    case 'ftype':state.type=b.dataset.t;render();break;
+    case 'new-debt':debtDialog(b.dataset.kind);break;
+    case 'edit-debt':debtDialog(all('SELECT kind FROM debts WHERE id=?',[id])[0].kind,id);break;
+    case 'del-debt':delDebt(id);break;
+    case 'pay':payDialog(id);break;
+    case 'del-pay':delPay(id);break;
+    case 'toggle-pays':state.open[id]=!state.open[id];render();break;
+    case 'export-db':exportDb();break;
+    case 'export-csv':exportCsv();break;
+    case 'reset':resetAll();break;
+  }
+});
+document.addEventListener('input',e=>{if(e.target.id==='q'){state.q=e.target.value;renderTxList();}});
+document.addEventListener('change',e=>{
+  if(e.target.id==='s-unit'){setSetting('unit',e.target.value);toast('ذخیره شد');}
+  if(e.target.id==='s-warn'){const n=Math.max(1,Math.min(90,parseInt(en(e.target.value),10)||7));setSetting('warn',n);e.target.value=fa(n);toast('ذخیره شد');}
+  if(e.target.id==='imp'&&e.target.files[0]){importDb(e.target.files[0]);e.target.value='';}
+});
+
+/* ---------- boot ---------- */
+function loadScript(u){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=u;s.onload=res;s.onerror=()=>rej(new Error('load '+u));document.head.appendChild(s);});}
+async function loadSqlJs(){
+  for(const u of ['https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js','https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-asm.js']){
+    try{await loadScript(u);if(window.initSqlJs)return;}catch(e){}
+  }
+  throw new Error('sqljs');
+}
+function startDl(){
+  dlP={value:null,promise:null};
+  try{
+    if(window.claude&&typeof window.claude.use==='function')dlP.promise=window.claude.use('downloads').then(d=>{dlP.value=d;return d;}).catch(()=>null);
+    else dlP=null;
+  }catch(e){dlP=null;}
+}
+async function boot(){
+  startDl();
+  try{
+    await loadSqlJs();
+    SQL=await window.initSqlJs();
+    let bytes=null;try{bytes=await IDB.get('db');}catch(e){state.storageOk=false;}
+    try{db=bytes?new SQL.Database(bytes):new SQL.Database();ensureSchema();}
+    catch(e){db=new SQL.Database();ensureSchema();}
+    loadSettings();
+    const t=todayJ();state.ym={y:t.y,m:t.m};
+    $('#boot').hidden=true;$('#app').hidden=false;$('#fab').hidden=false;
+    render();
+  }catch(e){
+    $('#boot').innerHTML='<div><b>بارگذاری پایگاه‌داده انجام نشد</b><span>برای اجرای SQLite در مرورگر، اتصال اینترنت لازم است. اتصال را بررسی کنید و دوباره تلاش کنید.</span><div class="retry"><button class="btn primary" onclick="location.reload()">تلاش دوباره</button></div></div>';
+  }
+}
+boot();
+})();
+</script>
+</body>
+</html>
