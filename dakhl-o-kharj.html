@@ -199,6 +199,12 @@ details.done>summary{cursor:pointer;color:var(--muted);margin-bottom:12px}
 .brow{display:flex;flex-wrap:wrap;gap:8px}
 .banner{background:var(--warn-soft);color:var(--warn);border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:.88rem}
 
+/* categories */
+.addcat{display:flex;gap:8px;margin:0 0 16px;max-width:460px}
+.crow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 14px}
+.crow+.crow{border-top:1px solid var(--line)}
+.cacts{display:flex;gap:2px;flex:none}
+
 /* fab + toast */
 .fab{position:fixed;left:22px;bottom:22px;z-index:30;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;background:var(--green);color:var(--green-ink);padding:13px 22px;font-weight:700;cursor:pointer;box-shadow:var(--shadow)}
 .fab svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round}
@@ -283,7 +289,7 @@ function g2d(gy,gm,gd){
 }
 function d2g(jdn){
   let j=4*jdn+139361631; j=j+div(div(4*jdn+183187720,146097)*3,4)*4-3908;
-  const i=div(mod(j,1461),4)*5+308, gd=div(mod(i,153),5)+1, gm=mod(div(i,153),12)+1, gy=div(j,1461)-100100+div(gm-8,6);
+  const i=div(mod(j,1461),4)*5+308, gd=div(mod(i,153),5)+1, gm=mod(div(i,153),12)+1, gy=div(j,1461)-100100+div(8-gm,6);
   return {gy,gm,gd};
 }
 function j2d(jy,jm,jd){ const r=jalCal(jy,true); return g2d(r.gy,3,r.march)+(jm-1)*31-div(jm,7)*(jm-7)+jd-1; }
@@ -311,21 +317,6 @@ const fmtNum=n=>fa(Math.round(n).toLocaleString('en-US')).replace(/,/g,'٬');
 const parseAmount=s=>Number(en(s).replace(/\D/g,'')||0);
 const fmtJ=s=>{if(!s)return '—';const {y,m,d}=parseJ(s);return fa(y+'/'+pad(m)+'/'+pad(d));};
 const fmtJLong=s=>{const {y,m,d}=parseJ(s);return weekday(s)+' '+fa(d)+' '+MONTHS[m-1];};
-const crcTable=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
-function crc32(b){let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=crcTable[(c^b[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
-function makeZip(name,data){
-  const enc=new TextEncoder().encode(name), crc=crc32(data), size=data.length, d=new Date();
-  const tm=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1), dt=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
-  const loc=new Uint8Array(30+enc.length), lv=new DataView(loc.buffer);
-  lv.setUint32(0,0x04034b50,true);lv.setUint16(4,20,true);lv.setUint16(6,0x0800,true);lv.setUint16(8,0,true);lv.setUint16(10,tm,true);lv.setUint16(12,dt,true);
-  lv.setUint32(14,crc,true);lv.setUint32(18,size,true);lv.setUint32(22,size,true);lv.setUint16(26,enc.length,true);lv.setUint16(28,0,true);loc.set(enc,30);
-  const cen=new Uint8Array(46+enc.length), cv=new DataView(cen.buffer);
-  cv.setUint32(0,0x02014b50,true);cv.setUint16(4,20,true);cv.setUint16(6,20,true);cv.setUint16(8,0x0800,true);cv.setUint16(10,0,true);cv.setUint16(12,tm,true);cv.setUint16(14,dt,true);
-  cv.setUint32(16,crc,true);cv.setUint32(20,size,true);cv.setUint32(24,size,true);cv.setUint16(28,enc.length,true);cv.setUint32(42,0,true);cen.set(enc,46);
-  const end=new Uint8Array(22), ev=new DataView(end.buffer);
-  ev.setUint32(0,0x06054b50,true);ev.setUint16(8,1,true);ev.setUint16(10,1,true);ev.setUint32(12,cen.length,true);ev.setUint32(16,loc.length+size,true);
-  return [loc,data,cen,end];
-}
 // </pure>
 
 // <schema>
@@ -360,6 +351,12 @@ CREATE TABLE IF NOT EXISTS payments(
   tx_id INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_pay_debt ON payments(debt_id);
+CREATE TABLE IF NOT EXISTS categories(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL CHECK(type IN ('income','expense')),
+  name TEXT NOT NULL,
+  UNIQUE(type,name)
+);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 `;
 // </schema>
@@ -380,7 +377,7 @@ const ICON_DN='<svg viewBox="0 0 24 24"><path d="M12 5v13M6 13l6 6 6-6"/></svg>'
 const CH_R='<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
 const CH_L='<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>';
 
-const state={view:'dash',ym:null,type:'all',q:'',open:{},storageOk:true,settings:{unit:'تومان',warn:'7'}};
+const state={view:'dash',ym:null,type:'all',q:'',open:{},storageOk:true,catType:'expense',back:'set',settings:{unit:'تومان',warn:'7'}};
 let SQL=null, db=null, dlP=null;
 
 /* ---------- storage ---------- */
@@ -403,7 +400,14 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 function all(sql,p=[]){const st=db.prepare(sql);try{st.bind(p);const out=[];while(st.step())out.push(st.getAsObject());return out;}finally{st.free();}}
 function run(sql,p=[]){db.run(sql,p);persist();}
 function lastId(){return db.exec('SELECT last_insert_rowid()')[0].values[0][0];}
-function ensureSchema(){db.exec(SCHEMA);}
+function ensureSchema(){
+  db.exec(SCHEMA);
+  if(!all("SELECT value FROM settings WHERE key='cats_seeded'").length){
+    for(const t of ['expense','income'])for(const n of CATS[t])db.run('INSERT OR IGNORE INTO categories(type,name) VALUES(?,?)',[t,n]);
+    db.run("INSERT OR REPLACE INTO settings(key,value) VALUES('cats_seeded','1')");
+  }
+  db.run('INSERT OR IGNORE INTO categories(type,name) SELECT DISTINCT type,category FROM transactions');
+}
 function loadSettings(){for(const r of all('SELECT key,value FROM settings'))state.settings[r.key]=r.value;}
 function setSetting(k,v){state.settings[k]=String(v);run('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)',[k,String(v)]);}
 const unit=()=>state.settings.unit||'تومان';
@@ -413,10 +417,8 @@ const txMonth=(y,m)=>all('SELECT * FROM transactions WHERE date BETWEEN ? AND ? 
 function debtRows(kind){
   return all('SELECT d.*, COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.debt_id=d.id),0) AS paid FROM debts d WHERE d.kind=?',[kind]).map(r=>({...r,remaining:r.amount-r.paid}));
 }
-function categoriesFor(type){
-  const used=all('SELECT DISTINCT category FROM transactions WHERE type=? ORDER BY category',[type]).map(r=>r.category);
-  return [...new Set([...CATS[type],...used])];
-}
+const catRows=type=>all("SELECT c.id,c.name,(SELECT COUNT(*) FROM transactions t WHERE t.type=c.type AND t.category=c.name) AS n FROM categories c WHERE c.type=? ORDER BY (c.name='سایر'), c.id",[type]);
+const categoriesFor=type=>catRows(type).map(r=>r.name);
 function dueInfo(due,remaining){
   if(remaining<=0)return {cls:'done',label:'تسویه شد',n:null};
   if(!due)return {cls:'none',label:'بدون سررسید',n:null};
@@ -447,6 +449,7 @@ dlg.addEventListener('input',e=>{if(e.target.matches('.amt-in'))fmtAmountInput(e
 dlg.addEventListener('change',e=>{
   const box=e.target.closest('.jdate');if(box)refreshDays(box);
   if(e.target.name==='type'&&e.target.closest('#txform'))fillCats(e.target.value);
+  if(e.target.id==='f-cat')toggleNewCat();
 });
 function confirmDlg(title,msg,label,fn){showDlg(title,'<p class="msg">'+msg+'</p>',{submit:label,danger:true,onSubmit:fn});}
 
@@ -486,7 +489,13 @@ function readDate(fd,name,{optional=false,label='تاریخ'}={}){
   if(+d>jLen(+y,+m))throw new Error(label+' معتبر نیست.');
   return jstr(+y,+m,+d);
 }
-function fillCats(type){const dl=$('#cats');if(dl)dl.innerHTML=categoriesFor(type).map(c=>'<option value="'+esc(c)+'">').join('');}
+function toggleNewCat(){const s=$('#f-cat'),n=$('#f-newcat');if(!s||!n)return;n.hidden=s.value!=='__new';if(!n.hidden)n.focus();}
+function fillCats(type,sel){
+  const s=$('#f-cat');if(!s)return;
+  const cur=sel!==undefined?sel:s.value;
+  s.innerHTML=categoriesFor(type).map(c=>'<option value="'+esc(c)+'"'+(c===cur?' selected':'')+'>'+esc(c)+'</option>').join('')+'<option value="__new">+ دستهٔ جدید…</option>';
+  const n=$('#f-newcat');if(n)n.hidden=s.value!=='__new';
+}
 const monthNav=()=>'<div class="mnav"><button data-act="mprev" aria-label="ماه قبل">'+CH_R+'</button><strong>'+MONTHS[state.ym.m-1]+' '+fa(state.ym.y)+'</strong><button data-act="mnext" aria-label="ماه بعد">'+CH_L+'</button></div>';
 
 /* ---------- views ---------- */
@@ -521,7 +530,7 @@ function viewTx(){
   return '<header class="ph"><h1>تراکنش‌ها</h1>'+monthNav()+'</header>'
   +'<div class="tools"><div class="chips" role="group" aria-label="نوع">'
   +[['all','همه'],['income','درآمد'],['expense','هزینه']].map(([k,l])=>'<button data-act="ftype" data-t="'+k+'" class="'+(state.type===k?'on':'')+'">'+l+'</button>').join('')
-  +'</div><input class="search" id="q" type="search" placeholder="جست‌وجو در دسته و توضیح" value="'+esc(state.q)+'" aria-label="جست‌وجو"></div><div id="txlist"></div>';
+  +'</div><input class="search" id="q" type="search" placeholder="جست‌وجو در دسته و توضیح" value="'+esc(state.q)+'" aria-label="جست‌وجو"><button class="btn sm" data-act="go-cats">دسته‌بندی‌ها</button></div><div id="txlist"></div>';
 }
 function renderTxList(){
   const {y,m}=state.ym;const q=state.q.trim();
@@ -568,15 +577,16 @@ function viewSet(){
   +(state.storageOk?'':'<div class="banner">ذخیرهٔ خودکار در این مرورگر کار نمی‌کند (مثلاً حالت خصوصی). حتماً فایل پشتیبان بگیرید.</div>')
   +'<div class="set">'
   +'<section><h2>عمومی</h2><p>واحد نمایش مبالغ و مقدار پیش‌آگاهی سررسیدها.</p><div class="field"><label for="s-unit">واحد پول</label><select id="s-unit"><option'+(unit()==='تومان'?' selected':'')+'>تومان</option><option'+(unit()==='ریال'?' selected':'')+'>ریال</option></select></div><div class="field" style="margin-top:12px"><label for="s-warn">هشدار سررسید: چند روز قبل از موعد نمایش داده شود؟</label><input id="s-warn" type="text" inputmode="numeric" value="'+fa(warnDays())+'" style="max-width:120px"></div></section>'
-  +'<section><h2>دانلود پشتیبان</h2><p>'+(hosted?'فایل SQLite داخل یک ZIP دانلود می‌شود؛ بعد از استخراج، فایل <span dir="ltr">.sqlite</span> را با هر برنامهٔ SQLite (مثل DB Browser) می‌توانید باز کنید.':'فایل کامل پایگاه‌داده (SQLite) را دانلود کنید و هر زمان خواستید بازگردانی کنید.')+'</p><div class="brow"><button class="btn primary" data-act="export-db">دانلود پایگاه‌داده</button><button class="btn" data-act="export-csv">خروجی CSV تراکنش‌ها</button></div></section>'
-  +'<section><h2>بازیابی از فایل</h2><p>فایل <span dir="ltr">.sqlite</span> که قبلاً از همین برنامه گرفته‌اید را انتخاب کنید. داده‌های فعلی جایگزین می‌شوند.</p><label class="btn" for="imp" style="cursor:pointer">انتخاب فایل پشتیبان</label><input id="imp" type="file" accept=".sqlite,.sqlite3,.db" hidden></section>'
+  +'<section><h2>دسته‌بندی‌ها</h2><p>دسته‌های هزینه و درآمد را اضافه، ویرایش یا حذف کنید.</p><button class="btn" data-act="go-cats">مدیریت دسته‌ها</button></section>'
+  +'<section><h2>دانلود پشتیبان</h2><p>'+(hosted?'همان فایل پایگاه‌داده (SQLite) بدون هیچ تغییری دانلود می‌شود. این محیط اجازهٔ ذخیره با پسوند <span dir="ltr">.sqlite</span> را نمی‌دهد، برای همین <span dir="ltr">.txt</span> به انتهای نام فایل اضافه می‌شود. محتوای فایل همان SQLite است: برای بازیابی همین فایل را انتخاب کنید، و برای باز کردن در برنامه‌های SQLite پسوند <span dir="ltr">.txt</span> را حذف کنید.':'فایل کامل پایگاه‌داده (SQLite) را دانلود کنید و هر زمان خواستید بازگردانی کنید.')+'</p><div class="brow"><button class="btn primary" data-act="export-db">دانلود پایگاه‌داده</button><button class="btn" data-act="export-csv">خروجی CSV تراکنش‌ها</button></div></section>'
+  +'<section><h2>بازیابی از فایل</h2><p>فایل پشتیبانی را که قبلاً از همین برنامه دانلود کرده‌اید انتخاب کنید (با هر پسوندی، حتی با <span dir="ltr">.txt</span> در انتهای نام). داده‌های فعلی با محتوای آن جایگزین می‌شود.</p><label class="btn" for="imp" style="cursor:pointer">انتخاب فایل پشتیبان</label><input id="imp" type="file" hidden></section>'
   +'<section><h2>پاک‌کردن همه‌چیز</h2><p>همهٔ تراکنش‌ها، بدهی‌ها و طلب‌ها حذف می‌شود. این کار قابل بازگشت نیست؛ پیش از آن پشتیبان بگیرید.</p><button class="btn txt d" data-act="reset" style="border:1px solid var(--line)">پاک‌کردن همهٔ داده‌ها</button></section>'
   +'</div>';
 }
 
 function render(){
-  document.querySelectorAll('.nav [data-view]').forEach(b=>{const on=b.dataset.view===state.view;b.classList.toggle('on',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
-  const v={dash:viewDash,tx:viewTx,debt:()=>viewDebts('debt'),credit:()=>viewDebts('credit'),set:viewSet}[state.view];
+  document.querySelectorAll('.nav [data-view]').forEach(b=>{const on=b.dataset.view===(state.view==='cats'?'set':state.view);b.classList.toggle('on',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+  const v={dash:viewDash,tx:viewTx,debt:()=>viewDebts('debt'),credit:()=>viewDebts('credit'),set:viewSet,cats:viewCats}[state.view];
   $('#main').innerHTML=v();
   if(state.view==='tx')renderTxList();
 }
@@ -588,14 +598,17 @@ function txDialog(id){
   showDlg(t?'ویرایش تراکنش':'ثبت تراکنش جدید',
     '<div id="txform"><div class="field"><span class="lbl">نوع</span><div class="seg"><label class="e"><input type="radio" name="type" value="expense"'+(type==='expense'?' checked':'')+'><span>هزینه</span></label><label class="i"><input type="radio" name="type" value="income"'+(type==='income'?' checked':'')+'><span>درآمد</span></label></div></div>'
     +amountField('amount','مبلغ',t?t.amount:0)
-    +'<div class="field"><label for="f-cat">دسته</label><input id="f-cat" name="category" type="text" list="cats" autocomplete="off" placeholder="انتخاب یا نوشتن دستهٔ جدید" value="'+esc(t?t.category:'')+'"><datalist id="cats"></datalist></div>'
+    +'<div class="field"><label for="f-cat">دسته</label><select id="f-cat" name="category"></select><input id="f-newcat" name="newcat" type="text" maxlength="40" autocomplete="off" placeholder="نام دستهٔ جدید" aria-label="نام دستهٔ جدید" hidden style="margin-top:6px"></div>'
     +dateField('date','تاریخ',t?t.date:todayStr(),false)
     +'<div class="field"><label for="f-note">توضیح (اختیاری)</label><input id="f-note" name="note" type="text" autocomplete="off" value="'+esc(t?t.note:'')+'"></div></div>',
-    {submit:t?'ذخیره تغییرات':'ثبت',onOpen:()=>fillCats(type),
+    {submit:t?'ذخیره تغییرات':'ثبت',onOpen:()=>fillCats(type,t?t.category:undefined),
      onSubmit(fd){
-       const ty=fd.get('type'), amt=parseAmount(fd.get('amount')), cat=String(fd.get('category')).trim()||'سایر', note=String(fd.get('note')).trim();
+       const ty=fd.get('type'), amt=parseAmount(fd.get('amount')), note=String(fd.get('note')).trim();
+       let cat=String(fd.get('category')||'');
+       if(cat==='__new'||!cat){cat=String(fd.get('newcat')||'').trim();if(!cat)throw new Error('نام دستهٔ جدید را وارد کنید.');}
        if(amt<=0)throw new Error('مبلغ را وارد کنید.');
        const date=readDate(fd,'date');
+       db.run('INSERT OR IGNORE INTO categories(type,name) VALUES(?,?)',[ty,cat]);
        if(t)run('UPDATE transactions SET type=?,amount=?,category=?,date=?,note=? WHERE id=?',[ty,amt,cat,date,note,t.id]);
        else run('INSERT INTO transactions(type,amount,category,date,note) VALUES(?,?,?,?,?)',[ty,amt,cat,date,note]);
        const p=parseJ(date);state.ym={y:p.y,m:p.m};
@@ -665,6 +678,62 @@ function delPay(id){
   });
 }
 
+/* ---------- categories ---------- */
+function viewCats(){
+  const type=state.catType, rows=catRows(type), label=type==='expense'?'هزینه':'درآمد';
+  return '<header class="ph"><div><h1>دسته‌بندی‌ها</h1><p class="sub">دسته‌های هزینه و درآمد را اضافه، ویرایش یا حذف کنید.</p></div><div class="acts"><button class="btn" data-act="nav" data-view="'+state.back+'">بازگشت</button></div></header>'
+  +'<div class="tools"><div class="chips" role="group" aria-label="نوع دسته">'
+  +[['expense','دسته‌های هزینه'],['income','دسته‌های درآمد']].map(([k,l])=>'<button data-act="ctype" data-t="'+k+'" class="'+(type===k?'on':'')+'">'+l+'</button>').join('')
+  +'</div></div>'
+  +'<form id="addcat" class="addcat" novalidate><input name="catname" id="catname" type="text" maxlength="40" autocomplete="off" placeholder="نام دستهٔ جدید '+label+'" aria-label="نام دستهٔ جدید"><button class="btn primary" type="submit">افزودن</button></form>'
+  +(rows.length?'<ul class="rows">'+rows.map(r=>'<li class="crow"><div class="mid"><b>'+esc(r.name)+'</b><small>'+(r.n?fa(r.n)+' تراکنش':'بدون تراکنش')+'</small></div><div class="cacts"><button class="btn txt" data-act="edit-cat" data-id="'+r.id+'">ویرایش</button><button class="btn txt d" data-act="del-cat" data-id="'+r.id+'">حذف</button></div></li>').join('')+'</ul>'
+   :'<div class="empty">هنوز دسته‌ای برای '+label+' وجود ندارد. از فرم بالا اولین دسته را اضافه کنید.</div>');
+}
+function addCat(name){
+  name=name.trim();
+  if(!name){toast('نام دسته را وارد کنید.');return;}
+  if(all('SELECT 1 FROM categories WHERE type=? AND name=?',[state.catType,name]).length){toast('این دسته قبلاً وجود دارد.');return;}
+  run('INSERT INTO categories(type,name) VALUES(?,?)',[state.catType,name]);
+  render();toast('دسته اضافه شد');const i=$('#catname');if(i)i.focus();
+}
+function catDialog(id){
+  const c=all('SELECT * FROM categories WHERE id=?',[id])[0];if(!c)return;
+  showDlg('ویرایش دسته',
+    '<div class="field"><label for="f-cn">نام دسته</label><input id="f-cn" name="catname" type="text" maxlength="40" autocomplete="off" value="'+esc(c.name)+'"></div><p class="msg" style="color:var(--muted);font-size:.86rem">با تغییر نام، تراکنش‌های قبلیِ این دسته هم با نام جدید نمایش داده می‌شوند.</p>',
+    {submit:'ذخیره تغییرات',
+     onSubmit(fd){
+       const nn=String(fd.get('catname')).trim();
+       if(!nn)throw new Error('نام دسته را وارد کنید.');
+       if(nn===c.name)return null;
+       if(all('SELECT 1 FROM categories WHERE type=? AND name=? AND id<>?',[c.type,nn,c.id]).length)throw new Error('دستهٔ دیگری با این نام وجود دارد. برای ادغام، یکی را حذف کنید و تراکنش‌هایش را به دیگری منتقل کنید.');
+       db.run('UPDATE transactions SET category=? WHERE type=? AND category=?',[nn,c.type,c.name]);
+       run('UPDATE categories SET name=? WHERE id=?',[nn,c.id]);
+       return 'نام دسته تغییر کرد';
+     }});
+}
+function delCat(id){
+  const c=all('SELECT * FROM categories WHERE id=?',[id])[0];if(!c)return;
+  const n=all('SELECT COUNT(*) AS n FROM transactions WHERE type=? AND category=?',[c.type,c.name])[0].n;
+  const others=catRows(c.type).filter(r=>r.id!==id), nm='«'+esc(c.name)+'»';
+  let body;
+  if(!n)body='<p class="msg">دستهٔ '+nm+' حذف شود؟</p>';
+  else if(others.length)body='<p class="msg">دستهٔ '+nm+' در '+fa(n)+' تراکنش استفاده شده است. این تراکنش‌ها به کدام دسته منتقل شوند؟</p><div class="field"><select name="target" aria-label="دستهٔ مقصد">'+others.map(o=>'<option value="'+esc(o.name)+'">'+esc(o.name)+'</option>').join('')+'</select></div>';
+  else if(c.name==='سایر')body='<p class="msg">دستهٔ '+nm+' در '+fa(n)+' تراکنش استفاده شده و دستهٔ دیگری برای انتقال وجود ندارد.</p>';
+  else body='<p class="msg">دستهٔ '+nm+' در '+fa(n)+' تراکنش استفاده شده و دستهٔ دیگری وجود ندارد؛ تراکنش‌ها به دستهٔ «سایر» منتقل می‌شوند.</p>';
+  showDlg('حذف دسته',body,{submit:'حذف',danger:true,
+    onSubmit(fd){
+      if(n){
+        let target;
+        if(others.length)target=String(fd.get('target'));
+        else if(c.name==='سایر')throw new Error('ابتدا یک دستهٔ دیگر بسازید تا تراکنش‌ها به آن منتقل شوند.');
+        else{target='سایر';db.run('INSERT OR IGNORE INTO categories(type,name) VALUES(?,?)',[c.type,target]);}
+        db.run('UPDATE transactions SET category=? WHERE type=? AND category=?',[target,c.type,c.name]);
+      }
+      run('DELETE FROM categories WHERE id=?',[id]);
+      return 'دسته حذف شد';
+    }});
+}
+
 /* ---------- files ---------- */
 async function getDl(){try{return dlP?await dlP.promise:null;}catch(e){return null;}}
 function anchorSave(name,parts,type){
@@ -673,7 +742,7 @@ function anchorSave(name,parts,type){
 async function exportDb(){
   await flush();const bytes=db.export(), stamp=todayStr(), base='dakhl-o-kharj-'+stamp, dl=await getDl();
   if(dl){
-    try{await dl.save({filename:base+'.zip',data:new Blob(makeZip(base+'.sqlite',bytes),{type:'application/zip'})});toast('پشتیبان ذخیره شد');}
+    try{await dl.save({filename:base+'.sqlite.txt',data:new Blob([bytes])});toast('پشتیبان ذخیره شد');}
     catch(e){if(!e||e.code!=='declined')toast('ذخیرهٔ فایل ممکن نشد');}
   }else{anchorSave(base+'.sqlite',[bytes],'application/x-sqlite3');toast('دانلود شروع شد');}
 }
@@ -688,7 +757,10 @@ async function exportCsv(){
 async function importDb(file){
   let test;
   try{
-    test=new SQL.Database(new Uint8Array(await file.arrayBuffer()));
+    const bytes=new Uint8Array(await file.arrayBuffer());
+    if(bytes[0]===0x50&&bytes[1]===0x4b){toast('این فایل ZIP است؛ ابتدا آن را استخراج کنید و فایل داخلش را انتخاب کنید.');return;}
+    if(bytes.length<16||String.fromCharCode(...bytes.subarray(0,15))!=='SQLite format 3')throw new Error('x');
+    test=new SQL.Database(bytes);
     const r=test.exec("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('transactions','debts','payments')")[0];
     if(!r||r.values.length<3)throw new Error('x');
   }catch(e){toast('این فایل، پشتیبان همین برنامه نیست.');return;}
@@ -724,9 +796,14 @@ document.addEventListener('click',e=>{
     case 'export-db':exportDb();break;
     case 'export-csv':exportCsv();break;
     case 'reset':resetAll();break;
+    case 'go-cats':state.back=state.view==='tx'?'tx':'set';state.view='cats';render();window.scrollTo(0,0);break;
+    case 'ctype':state.catType=b.dataset.t;render();break;
+    case 'edit-cat':catDialog(id);break;
+    case 'del-cat':delCat(id);break;
   }
 });
 document.addEventListener('input',e=>{if(e.target.id==='q'){state.q=e.target.value;renderTxList();}});
+document.addEventListener('submit',e=>{if(e.target.id==='addcat'){e.preventDefault();addCat(String(new FormData(e.target).get('catname')||''));}});
 document.addEventListener('change',e=>{
   if(e.target.id==='s-unit'){setSetting('unit',e.target.value);toast('ذخیره شد');}
   if(e.target.id==='s-warn'){const n=Math.max(1,Math.min(90,parseInt(en(e.target.value),10)||7));setSetting('warn',n);e.target.value=fa(n);toast('ذخیره شد');}
