@@ -298,6 +298,7 @@ dialog h2{font-size:1.15rem;margin-bottom:16px}
     <div class="nav">
       <button data-act="nav" data-view="dash"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>داشبورد</span></button>
       <button data-act="nav" data-view="tx"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>تراکنش‌ها</span></button>
+      <button data-act="nav" data-view="acc"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 7v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V7M7 7V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v2M13 13h4"/></svg><span>حساب‌ها</span></button>
       <button data-act="nav" data-view="rep"><svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6"/></svg><span>گزارش‌ها</span></button>
       <button data-act="nav" data-view="debt"><svg viewBox="0 0 24 24"><path d="M12 4v14M6 13l6 6 6-6"/></svg><span>بدهی‌ها</span></button>
       <button data-act="nav" data-view="credit"><svg viewBox="0 0 24 24"><path d="M12 20V6M6 11l6-6 6 6"/></svg><span>طلب‌ها</span></button>
@@ -378,9 +379,18 @@ CREATE TABLE IF NOT EXISTS transactions(
   subcategory TEXT NOT NULL DEFAULT '',
   date TEXT NOT NULL,
   note TEXT NOT NULL DEFAULT '',
+  account_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(date);
+CREATE INDEX IF NOT EXISTS idx_tx_account ON transactions(account_id);
+CREATE TABLE IF NOT EXISTS accounts(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  initial_balance INTEGER NOT NULL DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS debts(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   kind TEXT NOT NULL CHECK(kind IN ('debt','credit')),
@@ -433,7 +443,7 @@ const ICON_DN='<svg viewBox="0 0 24 24"><path d="M12 5v13M6 13l6 6 6-6"/></svg>'
 const CH_R='<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
 const CH_L='<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>';
 
-const state={view:'dash',ym:null,type:'all',q:'',open:{},storageOk:true,catType:'expense',back:'set',rep:{mode:'month',type:'expense',y:0,from:'',to:'',open:{}},settings:{unit:'تومان',warn:'7'}};
+const state={view:'dash',ym:null,type:'all',q:'',open:{},storageOk:true,catType:'expense',back:'set',rep:{mode:'month',type:'expense',y:0,from:'',to:'',open:{}},lastAccount:0,settings:{unit:'تومان',warn:'7'}};
 let SQL=null, db=null, dlP=null;
 
 /* ---------- storage ---------- */
@@ -457,8 +467,15 @@ function all(sql,p=[]){const st=db.prepare(sql);try{st.bind(p);const out=[];whil
 function run(sql,p=[]){db.run(sql,p);persist();}
 function lastId(){return db.exec('SELECT last_insert_rowid()')[0].values[0][0];}
 function ensureSchema(){
+  const hasTable=all("SELECT 1 FROM sqlite_master WHERE type='table' AND name='transactions'").length;
+  if(hasTable){
+    const cols=all('PRAGMA table_info(transactions)').map(c=>c.name);
+    if(!cols.includes('subcategory'))db.run("ALTER TABLE transactions ADD COLUMN subcategory TEXT NOT NULL DEFAULT ''");
+    if(!cols.includes('account_id'))db.run('ALTER TABLE transactions ADD COLUMN account_id INTEGER');
+  }
   db.exec(SCHEMA);
-  if(!all('PRAGMA table_info(transactions)').some(c=>c.name==='subcategory'))db.run("ALTER TABLE transactions ADD COLUMN subcategory TEXT NOT NULL DEFAULT ''");
+  if(!all('SELECT 1 FROM accounts').length)db.run("INSERT INTO accounts(name,initial_balance) VALUES('نقدی',0)");
+  db.run('UPDATE transactions SET account_id=(SELECT id FROM accounts ORDER BY id LIMIT 1) WHERE account_id IS NULL OR account_id NOT IN (SELECT id FROM accounts)');
   if(!all("SELECT value FROM settings WHERE key='cats_seeded'").length){
     for(const t of ['expense','income'])for(const n of CATS[t])db.run('INSERT OR IGNORE INTO categories(type,name) VALUES(?,?)',[t,n]);
     db.run("INSERT OR REPLACE INTO settings(key,value) VALUES('cats_seeded','1')");
@@ -471,6 +488,13 @@ function setSetting(k,v){state.settings[k]=String(v);run('INSERT OR REPLACE INTO
 const unit=()=>state.settings.unit||'تومان';
 const warnDays=()=>Math.max(1,Math.min(90,parseInt(state.settings.warn,10)||7));
 
+function acctRows(){
+  return all(`SELECT a.*, a.initial_balance + COALESCE(SUM(CASE WHEN t.type='income' THEN t.amount ELSE -t.amount END),0) AS balance,
+    COALESCE(SUM(CASE WHEN t.type='income' THEN t.amount ELSE 0 END),0) AS inc,
+    COALESCE(SUM(CASE WHEN t.type='expense' THEN t.amount ELSE 0 END),0) AS exp
+    FROM accounts a LEFT JOIN transactions t ON t.account_id=a.id GROUP BY a.id ORDER BY a.archived, a.id`);
+}
+const acctName=id=>{const r=all('SELECT name FROM accounts WHERE id=?',[id])[0];return r?r.name:'—';};
 const txMonth=(y,m)=>all('SELECT * FROM transactions WHERE date BETWEEN ? AND ? ORDER BY date DESC, id DESC',[jstr(y,m,1),jstr(y,m,31)]);
 function debtRows(kind){
   return all('SELECT d.*, COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.debt_id=d.id),0) AS paid FROM debts d WHERE d.kind=?',[kind]).map(r=>({...r,remaining:r.amount-r.paid}));
@@ -508,6 +532,7 @@ dlg.addEventListener('click',e=>{if(e.target===dlg||e.target.closest('[data-clos
 dlg.addEventListener('input',e=>{if(e.target.matches('.amt-in'))fmtAmountInput(e.target);});
 dlg.addEventListener('change',e=>{
   const box=e.target.closest('.jdate');if(box)refreshDays(box);
+  if(e.target.id==='f-mirror'){const w=$('#f-macc-wrap');if(w)w.hidden=!e.target.checked;}
   if(e.target.name==='type'&&e.target.closest('#txform'))fillCats(e.target.value,undefined,'');
   if(e.target.id==='f-cat'){toggleNewCat();const ty=dlg.querySelector('input[name=type]:checked');fillSubs(ty?ty.value:'expense',e.target.value,'');}
   if(e.target.id==='f-sub')toggleNewSub();
@@ -587,11 +612,14 @@ function viewDash(){
     return '<div class="alert '+(r.k==='credit'?'cr':over?'over':'')+'"><div class="who">'+KIND[r.k].from+' '+esc(r.person)+'<small>مانده '+fmtNum(r.remaining)+' '+esc(unit())+' — سررسید '+fmtJ(r.due_date)+'</small></div><div class="r"><span class="pill '+inf.cls+'">'+inf.label+'</span><button class="btn sm" data-act="pay" data-id="'+r.id+'">'+KIND[r.k].pay+'</button></div></div>';
   }).join('')+'</div>':'<div class="calm">سررسیدی در '+fa(w)+' روز آینده ندارید و موردی هم عقب نیفتاده است.</div>';
   const sum=a=>a.reduce((s,r)=>s+r.remaining,0);
+  const accs=acctRows().filter(a=>!a.archived);
+  const accHtml=accs.length?'<div class="cats">'+accs.map(a=>'<div class="cat"><span>'+esc(a.name)+'</span><span class="t"><i style="width:'+(a.balance<=0?0:Math.min(100,a.balance/Math.max(1,...accs.map(x=>Math.abs(x.balance)))*100))+'%"></i></span><span class="'+(a.balance<0?'exp':'')+'">'+fmtNum(a.balance)+'</span></div>').join('')+'</div>':'<div class="calm">حسابی ثبت نشده است.</div>';
 
   return '<header class="ph"><h1>داشبورد</h1>'+monthNav()+'</header>'
   +'<section class="strip" aria-label="خلاصهٔ ماه"><div><span class="k">درآمد</span><b class="inc">'+fmtNum(inc)+'</b></div><div><span class="k">هزینه</span><b class="exp">'+fmtNum(exp)+'</b></div><div><span class="k">'+(bal<0?'کسری ماه':'مانده ماه')+'</span><b class="'+(bal<0?'exp':'inc')+'">'+fmtNum(Math.abs(bal))+' <span class="u">'+esc(unit())+'</span></b></div></section>'
   +'<section class="sec"><h2>روند روزانه<span class="legend"><span><i style="background:var(--green)"></i>درآمد</span><span><i style="background:var(--exp)"></i>هزینه</span></span></h2><div class="chart" role="img" aria-label="نمودار روزانهٔ درآمد و هزینه '+MONTHS[m-1]+'">'+bars+'</div></section>'
   +'<section class="sec"><h2>سررسیدهای نزدیک</h2>'+alerts+'<div class="totals"><span>بدهی باز: <b>'+fmtNum(sum(debts))+'</b> '+esc(unit())+'</span><span>طلب باز: <b>'+fmtNum(sum(credits))+'</b> '+esc(unit())+'</span></div></section>'
+  +'<section class="sec"><h2>موجودی حساب‌ها<button class="btn txt" data-act="nav" data-view="acc">مدیریت حساب‌ها</button></h2>'+accHtml+'</section>'
   +'<section class="sec"><h2>بیشترین هزینه‌ها در این ماه<button class="btn txt" data-act="nav" data-view="rep">گزارش کامل</button></h2>'+catHtml+'</section>';
 }
 
@@ -602,10 +630,10 @@ function viewTx(){
   +'</div><input class="search" id="q" type="search" placeholder="جست‌وجو در دسته و توضیح" value="'+esc(state.q)+'" aria-label="جست‌وجو"><button class="btn sm" data-act="go-cats">دسته‌بندی‌ها</button></div><div id="txlist"></div>';
 }
 function renderTxList(){
-  const {y,m}=state.ym;const q=state.q.trim();
+  const {y,m}=state.ym, multiAcc=acctRows().length>1;const q=state.q.trim();
   let list=txMonth(y,m);
   if(state.type!=='all')list=list.filter(t=>t.type===state.type);
-  if(q)list=list.filter(t=>(t.category+' '+t.subcategory+' '+t.note).includes(q));
+  if(q)list=list.filter(t=>(t.category+' '+t.subcategory+' '+t.note+' '+acctName(t.account_id)).includes(q));
   const box=$('#txlist');if(!box)return;
   if(!list.length){box.innerHTML='<div class="empty">'+(q||state.type!=='all'?'موردی با این فیلتر پیدا نشد.':'هنوز تراکنشی در این ماه ثبت نشده. با دکمهٔ «ثبت جدید» اولین مورد را اضافه کنید.')+'</div>';return;}
   const inc=list.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0), exp=list.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
@@ -613,7 +641,7 @@ function renderTxList(){
   box.innerHTML='<p class="count">'+fa(list.length)+' تراکنش — مبالغ به '+esc(unit())+(state.type!=='expense'?' — جمع درآمد: '+fmtNum(inc):'')+(state.type!=='income'?' — جمع هزینه: '+fmtNum(exp):'')+'</p>'
   +groups.map(g=>'<div class="day"><h3>'+fmtJLong(g.date)+' '+fa(parseJ(g.date).y)+'</h3><ul class="rows">'+g.items.map(t=>{
     const isIn=t.type==='income';
-    return '<li class="row"><span class="lead '+(isIn?'in':'out')+'" title="'+(isIn?'درآمد':'هزینه')+'">'+(isIn?ICON_UP:ICON_DN)+'</span><div class="mid"><b>'+esc(t.category)+(t.subcategory?' / '+esc(t.subcategory):'')+'</b>'+(t.note?'<small>'+esc(t.note)+'</small>':'')+'</div><div class="amt '+(isIn?'in':'out')+'">'+fmtNum(t.amount)+'</div><div class="racts"><button class="btn txt" data-act="edit-tx" data-id="'+t.id+'">ویرایش</button><button class="btn txt d" data-act="del-tx" data-id="'+t.id+'">حذف</button></div></li>';
+    return '<li class="row"><span class="lead '+(isIn?'in':'out')+'" title="'+(isIn?'درآمد':'هزینه')+'">'+(isIn?ICON_UP:ICON_DN)+'</span><div class="mid"><b>'+esc(t.category)+(t.subcategory?' / '+esc(t.subcategory):'')+'</b><small>'+[t.note,multiAcc?acctName(t.account_id):''].filter(Boolean).join(' — ')+'</small></div><div class="amt '+(isIn?'in':'out')+'">'+fmtNum(t.amount)+'</div><div class="racts"><button class="btn txt" data-act="edit-tx" data-id="'+t.id+'">ویرایش</button><button class="btn txt d" data-act="del-tx" data-id="'+t.id+'">حذف</button></div></li>';
   }).join('')+'</ul></div>').join('');
 }
 
@@ -655,7 +683,7 @@ function viewSet(){
 
 function render(){
   document.querySelectorAll('.nav [data-view]').forEach(b=>{const on=b.dataset.view===(state.view==='cats'?'set':state.view);b.classList.toggle('on',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
-  const v={dash:viewDash,tx:viewTx,debt:()=>viewDebts('debt'),credit:()=>viewDebts('credit'),set:viewSet,cats:viewCats,rep:viewReports}[state.view];
+  const v={dash:viewDash,tx:viewTx,debt:()=>viewDebts('debt'),credit:()=>viewDebts('credit'),set:viewSet,cats:viewCats,rep:viewReports,acc:viewAccounts}[state.view];
   $('#main').innerHTML=v();
   if(state.view==='tx')renderTxList();
 }
@@ -667,13 +695,15 @@ function txDialog(id){
   showDlg(t?'ویرایش تراکنش':'ثبت تراکنش جدید',
     '<div id="txform"><div class="field"><span class="lbl">نوع</span><div class="seg"><label class="e"><input type="radio" name="type" value="expense"'+(type==='expense'?' checked':'')+'><span>هزینه</span></label><label class="i"><input type="radio" name="type" value="income"'+(type==='income'?' checked':'')+'><span>درآمد</span></label></div></div>'
     +amountField('amount','مبلغ',t?t.amount:0)
+    +'<div class="field"><label for="f-acc">حساب</label><select id="f-acc" name="account_id">'+acctRows().filter(a=>!a.archived||a.id===(t?t.account_id:0)).map(a=>'<option value="'+a.id+'"'+((t?t.account_id:state.lastAccount)===a.id?' selected':'')+'>'+esc(a.name)+'</option>').join('')+'</select></div>'
     +'<div class="field"><label for="f-cat">دسته</label><select id="f-cat" name="category"></select><input id="f-newcat" name="newcat" type="text" maxlength="40" autocomplete="off" placeholder="نام دستهٔ جدید" aria-label="نام دستهٔ جدید" hidden style="margin-top:6px"></div>'
     +'<div class="field"><label for="f-sub">زیرگروه (اختیاری)</label><select id="f-sub" name="subcategory"></select><input id="f-newsub" name="newsub" type="text" maxlength="40" autocomplete="off" placeholder="نام زیرگروه جدید" aria-label="نام زیرگروه جدید" hidden style="margin-top:6px"></div>'
     +dateField('date','تاریخ',t?t.date:todayStr(),false)
     +'<div class="field"><label for="f-note">توضیح (اختیاری)</label><input id="f-note" name="note" type="text" autocomplete="off" value="'+esc(t?t.note:'')+'"></div></div>',
     {submit:t?'ذخیره تغییرات':'ثبت',onOpen:()=>fillCats(type,t?t.category:undefined,t?t.subcategory:undefined),
      onSubmit(fd){
-       const ty=fd.get('type'), amt=parseAmount(fd.get('amount')), note=String(fd.get('note')).trim();
+       const ty=fd.get('type'), amt=parseAmount(fd.get('amount')), note=String(fd.get('note')).trim(), accId=+fd.get('account_id');
+       if(!accId)throw new Error('حساب را انتخاب کنید.');
        let cat=String(fd.get('category')||'');
        if(cat==='__new'||!cat){cat=String(fd.get('newcat')||'').trim();if(!cat)throw new Error('نام دستهٔ جدید را وارد کنید.');}
        if(amt<=0)throw new Error('مبلغ را وارد کنید.');
@@ -682,9 +712,9 @@ function txDialog(id){
        if(sub==='__new'){sub=String(fd.get('newsub')||'').trim();if(!sub)throw new Error('نام زیرگروه جدید را وارد کنید.');}
        db.run('INSERT OR IGNORE INTO categories(type,name) VALUES(?,?)',[ty,cat]);
        if(sub)db.run('INSERT OR IGNORE INTO subcategories(category_id,name) SELECT id,? FROM categories WHERE type=? AND name=?',[sub,ty,cat]);
-       if(t)run('UPDATE transactions SET type=?,amount=?,category=?,subcategory=?,date=?,note=? WHERE id=?',[ty,amt,cat,sub,date,note,t.id]);
-       else run('INSERT INTO transactions(type,amount,category,subcategory,date,note) VALUES(?,?,?,?,?,?)',[ty,amt,cat,sub,date,note]);
-       const p=parseJ(date);state.ym={y:p.y,m:p.m};
+       if(t)run('UPDATE transactions SET type=?,amount=?,category=?,subcategory=?,date=?,note=?,account_id=? WHERE id=?',[ty,amt,cat,sub,date,note,accId,t.id]);
+       else run('INSERT INTO transactions(type,amount,category,subcategory,date,note,account_id) VALUES(?,?,?,?,?,?,?)',[ty,amt,cat,sub,date,note,accId]);
+       state.lastAccount=accId;const p=parseJ(date);state.ym={y:p.y,m:p.m};
        return t?'تغییرات ذخیره شد':'ثبت شد';
      }});
 }
@@ -731,14 +761,15 @@ function payDialog(id){
     '<p class="msg">مانده: <b>'+fmtNum(r.remaining)+'</b> '+esc(unit())+'</p>'
     +amountField('amount','مبلغ',r.remaining)+dateField('date','تاریخ',todayStr(),false)
     +'<div class="field"><label for="f-note">توضیح (اختیاری)</label><input id="f-note" name="note" type="text" autocomplete="off"></div>'
-    +'<label class="check"><input type="checkbox" name="mirror"><span>'+K.mirror+'</span></label>',
+    +'<label class="check"><input type="checkbox" id="f-mirror" name="mirror"><span>'+K.mirror+'</span></label>'
+    +'<div class="field" id="f-macc-wrap" hidden><label for="f-macc">حساب</label><select id="f-macc" name="macc">'+acctRows().filter(a=>!a.archived).map(a=>'<option value="'+a.id+'"'+(state.lastAccount===a.id?' selected':'')+'>'+esc(a.name)+'</option>').join('')+'</select></div>',
     {submit:'ثبت',
      onSubmit(fd){
        const amt=parseAmount(fd.get('amount')), note=String(fd.get('note')).trim();
        if(amt<=0)throw new Error('مبلغ را وارد کنید.');
        if(amt>r.remaining)throw new Error('مبلغ از مانده ('+fmtNum(r.remaining)+') بیشتر است.');
        const date=readDate(fd,'date');let txId=null;
-       if(fd.get('mirror')){db.run('INSERT INTO transactions(type,amount,category,date,note) VALUES(?,?,?,?,?)',[K.mirrorType,amt,K.mirrorCat,date,r.person]);txId=lastId();}
+       if(fd.get('mirror')){const accId=+fd.get('macc');if(!accId)throw new Error('حساب را انتخاب کنید.');db.run('INSERT INTO transactions(type,amount,category,date,note,account_id) VALUES(?,?,?,?,?,?)',[K.mirrorType,amt,K.mirrorCat,date,r.person,accId]);txId=lastId();state.lastAccount=accId;}
        run('INSERT INTO payments(debt_id,amount,date,note,tx_id) VALUES(?,?,?,?,?)',[r.id,amt,date,note,txId]);
        state.open[r.id]=true;
        return amt===r.remaining?'تسویه شد':'ثبت شد';
@@ -749,6 +780,48 @@ function delPay(id){
   confirmDlg('حذف ردیف','این ردیف به مبلغ '+fmtNum(p.amount)+' حذف شود؟','حذف',()=>{
     if(p.tx_id)db.run('DELETE FROM transactions WHERE id=?',[p.tx_id]);run('DELETE FROM payments WHERE id=?',[id]);return 'حذف شد';
   });
+}
+
+/* ---------- accounts ---------- */
+function viewAccounts(){
+  const rows=acctRows(), active=rows.filter(a=>!a.archived), archived=rows.filter(a=>a.archived), total=active.reduce((s,a)=>s+a.balance,0);
+  const card=a=>'<article class="item"><div class="top"><div><h3>'+esc(a.name)+'</h3><p class="note">موجودی اولیه: '+fmtNum(a.initial_balance)+' '+esc(unit())+'</p></div><span class="pill '+(a.balance<0?'over':'ok')+'">'+fmtNum(a.balance)+'</span></div>'
+    +'<div class="nums"><div><small>واریزی‌ها</small><b class="inc">'+fmtNum(a.inc)+'</b></div><div><small>برداشت‌ها</small><b class="exp">'+fmtNum(a.exp)+'</b></div><div><small>موجودی فعلی</small><b class="'+(a.balance<0?'exp':'inc')+'">'+fmtNum(a.balance)+'</b></div></div>'
+    +'<div class="btns"><button class="btn txt" data-act="edit-acc" data-id="'+a.id+'">ویرایش</button>'+(a.archived?'<button class="btn txt" data-act="unarch-acc" data-id="'+a.id+'">فعال‌سازی</button>':(active.length>1?'<button class="btn txt" data-act="arch-acc" data-id="'+a.id+'">آرشیو</button>':''))+'<button class="btn txt d" data-act="del-acc" data-id="'+a.id+'">حذف</button></div></article>';
+  return '<header class="ph"><div><h1>حساب‌ها</h1><p class="sub">موجودی هر حساب با ثبت هزینه و درآمد به‌روز می‌شود.</p></div><div class="acts"><button class="btn primary" data-act="new-acc">+ حساب جدید</button></div></header>'
+  +'<section class="strip"><div><span class="k">جمع موجودی</span><b class="'+(total<0?'exp':'inc')+'">'+fmtNum(total)+' <span class="u">'+esc(unit())+'</span></b></div><div><span class="k">تعداد حساب</span><b>'+fa(active.length)+'</b></div></section>'
+  +'<div class="items">'+active.map(card).join('')+'</div>'
+  +(archived.length?'<details class="done"><summary>آرشیو شده‌ها ('+fa(archived.length)+')</summary><div class="items">'+archived.map(card).join('')+'</div></details>':'');
+}
+function acctDialog(id){
+  const a=id?all('SELECT * FROM accounts WHERE id=?',[id])[0]:null;
+  showDlg(a?'ویرایش حساب':'حساب جدید',
+    '<div class="field"><label for="f-an">نام حساب</label><input id="f-an" name="name" type="text" maxlength="40" autocomplete="off" placeholder="مثلاً کارت ملت، نقدی" value="'+esc(a?a.name:'')+'"></div>'
+    +amountField('initial','موجودی '+(a?'اولیهٔ ثبت‌شده':'فعلی هنگام ثبت'),a?a.initial_balance:0)
+    +(a?'<p class="msg" style="color:var(--muted);font-size:.86rem">تغییر این عدد، مبنای محاسبهٔ موجودی فعلی را عوض می‌کند و روی تراکنش‌های ثبت‌شده اثری ندارد.</p>':''),
+    {submit:a?'ذخیره تغییرات':'افزودن',
+     onSubmit(fd){
+       const nm=String(fd.get('name')).trim(), ib=parseAmount(fd.get('initial'));
+       if(!nm)throw new Error('نام حساب را وارد کنید.');
+       if(all('SELECT 1 FROM accounts WHERE name=? AND id<>?',[nm,a?a.id:0]).length)throw new Error('حساب دیگری با این نام وجود دارد.');
+       if(a)run('UPDATE accounts SET name=?,initial_balance=? WHERE id=?',[nm,ib,a.id]);
+       else{run('INSERT INTO accounts(name,initial_balance) VALUES(?,?)',[nm,ib]);state.lastAccount=lastId();}
+       return a?'تغییرات ذخیره شد':'حساب اضافه شد';
+     }});
+}
+function archAcc(id,v){run('UPDATE accounts SET archived=? WHERE id=?',[v?1:0,id]);render();}
+function delAcc(id){
+  const a=all('SELECT * FROM accounts WHERE id=?',[id])[0];if(!a)return;
+  const others=acctRows().filter(r=>r.id!==id);
+  if(!others.length){toast('حداقل یک حساب باید باقی بماند.');return;}
+  const n=all('SELECT COUNT(*) AS n FROM transactions WHERE account_id=?',[id])[0].n;
+  const body=n?'<p class="msg">حساب «'+esc(a.name)+'» در '+fa(n)+' تراکنش استفاده شده است. این تراکنش‌ها به کدام حساب منتقل شوند؟</p><div class="field"><select name="target">'+others.map(o=>'<option value="'+o.id+'">'+esc(o.name)+'</option>').join('')+'</select></div>':'<p class="msg">حساب «'+esc(a.name)+'» حذف شود؟</p>';
+  showDlg('حذف حساب',body,{submit:'حذف',danger:true,
+    onSubmit(fd){
+      if(n)db.run('UPDATE transactions SET account_id=? WHERE account_id=?',[+fd.get('target'),id]);
+      run('DELETE FROM accounts WHERE id=?',[id]);
+      return 'حساب حذف شد';
+    }});
 }
 
 /* ---------- categories ---------- */
@@ -998,9 +1071,9 @@ async function exportDb(){
   }else{anchorSave(base+'.sqlite',[bytes],'application/x-sqlite3');toast('دانلود شروع شد');}
 }
 async function exportCsv(){
-  const rows=all('SELECT date,type,category,subcategory,amount,note FROM transactions ORDER BY date,id');
+  const rows=all('SELECT date,type,category,subcategory,amount,note,account_id FROM transactions ORDER BY date,id');
   const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
-  const csv='\uFEFF'+['تاریخ شمسی,نوع,دسته,زیرگروه,مبلغ,توضیح'].concat(rows.map(r=>[r.date,r.type==='income'?'درآمد':'هزینه',q(r.category),q(r.subcategory),r.amount,q(r.note)].join(','))).join('\r\n');
+  const csv='\uFEFF'+['تاریخ شمسی,نوع,دسته,زیرگروه,مبلغ,توضیح,حساب'].concat(rows.map(r=>[r.date,r.type==='income'?'درآمد':'هزینه',q(r.category),q(r.subcategory),r.amount,q(r.note),q(acctName(r.account_id))].join(','))).join('\r\n');
   await saveCsv('transactions-'+todayStr()+'.csv',csv);
 }
 async function importDb(file){
@@ -1049,6 +1122,11 @@ document.addEventListener('click',e=>{
     case 'ctype':state.catType=b.dataset.t;render();break;
     case 'edit-cat':catDialog(id);break;
     case 'del-cat':delCat(id);break;
+    case 'new-acc':acctDialog();break;
+    case 'edit-acc':acctDialog(id);break;
+    case 'del-acc':delAcc(id);break;
+    case 'arch-acc':archAcc(id,true);break;
+    case 'unarch-acc':archAcc(id,false);break;
     case 'add-sub':subAddDialog(id);break;
     case 'edit-sub':subEditDialog(id);break;
     case 'del-sub':delSub(id);break;
