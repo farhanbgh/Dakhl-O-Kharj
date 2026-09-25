@@ -594,7 +594,7 @@ const monthNav=()=>'<div class="mnav"><button data-act="mprev" aria-label="ما�
 
 /* ---------- views ---------- */
 function viewDash(){
-  const {y,m}=state.ym, list=txMonth(y,m), n=jLen(y,m), today=todayStr();
+  const {y,m}=state.ym, list=txMonth(y,m).filter(t=>t.category!=='اصلاح موجودی'), n=jLen(y,m), today=todayStr();
   let inc=0,exp=0;const di=new Array(n+1).fill(0),de=new Array(n+1).fill(0),cat={};
   for(const t of list){const d=+t.date.slice(8);if(t.type==='income'){inc+=t.amount;di[d]+=t.amount;}else{exp+=t.amount;de[d]+=t.amount;cat[t.category]=(cat[t.category]||0)+t.amount;}}
   const bal=inc-exp, mx=Math.max(1,...di,...de);
@@ -787,7 +787,7 @@ function viewAccounts(){
   const rows=acctRows(), active=rows.filter(a=>!a.archived), archived=rows.filter(a=>a.archived), total=active.reduce((s,a)=>s+a.balance,0);
   const card=a=>'<article class="item"><div class="top"><div><h3>'+esc(a.name)+'</h3><p class="note">موجودی اولیه: '+fmtNum(a.initial_balance)+' '+esc(unit())+'</p></div><span class="pill '+(a.balance<0?'over':'ok')+'">'+fmtNum(a.balance)+'</span></div>'
     +'<div class="nums"><div><small>واریزی‌ها</small><b class="inc">'+fmtNum(a.inc)+'</b></div><div><small>برداشت‌ها</small><b class="exp">'+fmtNum(a.exp)+'</b></div><div><small>موجودی فعلی</small><b class="'+(a.balance<0?'exp':'inc')+'">'+fmtNum(a.balance)+'</b></div></div>'
-    +'<div class="btns"><button class="btn txt" data-act="edit-acc" data-id="'+a.id+'">ویرایش</button>'+(a.archived?'<button class="btn txt" data-act="unarch-acc" data-id="'+a.id+'">فعال‌سازی</button>':(active.length>1?'<button class="btn txt" data-act="arch-acc" data-id="'+a.id+'">آرشیو</button>':''))+'<button class="btn txt d" data-act="del-acc" data-id="'+a.id+'">حذف</button></div></article>';
+    +'<div class="btns"><button class="btn txt" data-act="adj-acc" data-id="'+a.id+'">ویرایش موجودی فعلی</button><button class="btn txt" data-act="edit-acc" data-id="'+a.id+'">ویرایش نام و موجودی اولیه</button>'+(a.archived?'<button class="btn txt" data-act="unarch-acc" data-id="'+a.id+'">فعال‌سازی</button>':(active.length>1?'<button class="btn txt" data-act="arch-acc" data-id="'+a.id+'">آرشیو</button>':''))+'<button class="btn txt d" data-act="del-acc" data-id="'+a.id+'">حذف</button></div></article>';
   return '<header class="ph"><div><h1>حساب‌ها</h1><p class="sub">موجودی هر حساب با ثبت هزینه و درآمد به‌روز می‌شود.</p></div><div class="acts"><button class="btn primary" data-act="new-acc">+ حساب جدید</button></div></header>'
   +'<section class="strip"><div><span class="k">جمع موجودی</span><b class="'+(total<0?'exp':'inc')+'">'+fmtNum(total)+' <span class="u">'+esc(unit())+'</span></b></div><div><span class="k">تعداد حساب</span><b>'+fa(active.length)+'</b></div></section>'
   +'<div class="items">'+active.map(card).join('')+'</div>'
@@ -807,6 +807,25 @@ function acctDialog(id){
        if(a)run('UPDATE accounts SET name=?,initial_balance=? WHERE id=?',[nm,ib,a.id]);
        else{run('INSERT INTO accounts(name,initial_balance) VALUES(?,?)',[nm,ib]);state.lastAccount=lastId();}
        return a?'تغییرات ذخیره شد':'حساب اضافه شد';
+     }});
+}
+function adjBalanceDialog(id){
+  const a=all('SELECT * FROM accounts WHERE id=?',[id])[0];if(!a)return;
+  const cur=acctRows().find(r=>r.id===id).balance;
+  showDlg('ویرایش موجودی فعلی — '+esc(a.name),
+    '<p class="msg">موجودی فعلی الان: <b>'+fmtNum(cur)+'</b> '+esc(unit())+'</p>'
+    +amountField('newbal','موجودی جدید',cur)
+    +dateField('date','تاریخ اصلاح',todayStr(),false)
+    +'<div class="field"><label for="f-note">توضیح (اختیاری)</label><input id="f-note" name="note" type="text" autocomplete="off" placeholder="مثلاً هم‌خوانی با صورت‌حساب بانک"></div>'
+    +'<p class="msg" style="color:var(--muted);font-size:.86rem">اختلاف با موجودی فعلی به‌صورت یک تراکنش «اصلاح موجودی» ثبت می‌شود تا در گزارش‌ها هم دیده شود.</p>',
+    {submit:'ثبت',
+     onSubmit(fd){
+       const nb=parseAmount(fd.get('newbal')), diff=nb-cur;
+       if(diff===0)return 'موجودی تغییری نکرد';
+       const date=readDate(fd,'date'), note=String(fd.get('note')).trim()||'اصلاح موجودی', ty=diff>0?'income':'expense', cat='اصلاح موجودی';
+       db.run('INSERT OR IGNORE INTO categories(type,name) VALUES(?,?)',[ty,cat]);
+       run('INSERT INTO transactions(type,amount,category,date,note,account_id) VALUES(?,?,?,?,?,?)',[ty,Math.abs(diff),cat,date,note,id]);
+       return 'موجودی به‌روزرسانی شد';
      }});
 }
 function archAcc(id,v){run('UPDATE accounts SET archived=? WHERE id=?',[v?1:0,id]);render();}
@@ -945,7 +964,7 @@ function deltaAmt(diff,has){
   if(!diff)return '<span class="dlt flat">بدون تغییر</span>';
   return '<span class="dlt '+(diff>0?'good':'bad')+'">'+(diff>0?'▲ ':'▼ ')+fmtNum(Math.abs(diff))+'</span>';
 }
-const repRows=(from,to)=>all('SELECT type,category,subcategory,COUNT(*) AS n,SUM(amount) AS total FROM transactions WHERE date BETWEEN ? AND ? GROUP BY type,category,subcategory',[from,to]);
+const repRows=(from,to)=>all("SELECT type,category,subcategory,COUNT(*) AS n,SUM(amount) AS total FROM transactions WHERE date BETWEEN ? AND ? AND category<>'اصلاح موجودی' GROUP BY type,category,subcategory",[from,to]);
 function aggregate(rows,type){
   const cats=new Map();let total=0,n=0;
   for(const r of rows){
@@ -974,7 +993,7 @@ function previousRange(rg){
   return {from:jstr(a.jy,a.jm,a.jd),to:jstr(b.jy,b.jm,b.jd)};
 }
 function buckets(rg){
-  const sums=all('SELECT date,type,SUM(amount) AS s FROM transactions WHERE date BETWEEN ? AND ? GROUP BY date,type',[rg.from,rg.to]);
+  const sums=all("SELECT date,type,SUM(amount) AS s FROM transactions WHERE date BETWEEN ? AND ? AND category<>'اصلاح موجودی' GROUP BY date,type",[rg.from,rg.to]);
   const days=jdnOf(rg.to)-jdnOf(rg.from)+1, byMonth=state.rep.mode==='year'||days>62, today=todayStr(), out=[], idx=new Map();
   if(!byMonth){
     for(let j=jdnOf(rg.from);j<=jdnOf(rg.to);j++){
@@ -1023,7 +1042,7 @@ function viewReports(){
   const today=todayStr(), endEff=rg.to<today?rg.to:today, days=Math.max(1,jdnOf(endEff)-jdnOf(rg.from)+1);
   const A=type==='income'?I:E, PA=type==='income'?pI:pE, label=type==='income'?'درآمد':'هزینه';
   const bk=buckets(rg), keys=withSubs(A,type), allOpen=keys.length>0&&keys.every(k=>r.open[k]);
-  const top=all('SELECT * FROM transactions WHERE type=? AND date BETWEEN ? AND ? ORDER BY amount DESC, date DESC, id DESC LIMIT 5',[type,rg.from,rg.to]);
+  const top=all("SELECT * FROM transactions WHERE type=? AND date BETWEEN ? AND ? AND category<>'اصلاح موجودی' ORDER BY amount DESC, date DESC, id DESC LIMIT 5",[type,rg.from,rg.to]);
   const chips=(act,attr,items,cur)=>'<div class="chips" role="group">'+items.map(([k,l])=>'<button data-act="'+act+'" data-'+attr+'="'+k+'" class="'+(cur===k?'on':'')+'">'+l+'</button>').join('')+'</div>';
   let nav='';
   if(r.mode==='month')nav=monthNav();
@@ -1124,6 +1143,7 @@ document.addEventListener('click',e=>{
     case 'del-cat':delCat(id);break;
     case 'new-acc':acctDialog();break;
     case 'edit-acc':acctDialog(id);break;
+    case 'adj-acc':adjBalanceDialog(id);break;
     case 'del-acc':delAcc(id);break;
     case 'arch-acc':archAcc(id,true);break;
     case 'unarch-acc':archAcc(id,false);break;
