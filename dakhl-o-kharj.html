@@ -365,6 +365,9 @@ const fa=s=>String(s).replace(/\d/g,d=>FA[d]);
 const en=s=>String(s).replace(/[۰-۹]/g,d=>FA.indexOf(d)).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d));
 const fmtNum=n=>fa(Math.round(n).toLocaleString('en-US')).replace(/,/g,'٬');
 const parseAmount=s=>Number(en(s).replace(/\D/g,'')||0);
+function parseLiters(v){const s=en(String(v==null?'':v)).replace(/[^0-9.]/g,'');if(!s)return null;const n=parseFloat(s);return isFinite(n)&&n>0?n:null;}
+function fmtLiters(v){if(v==null||!v)return null;const s=(Math.round(v*100)/100).toString();return fa(s).replace('.','٫');}
+const GAS_SUB='بنزین';
 const fmtJ=s=>{if(!s)return '—';const {y,m,d}=parseJ(s);return fa(y+'/'+pad(m)+'/'+pad(d));};
 const fmtJLong=s=>{const {y,m,d}=parseJ(s);return weekday(s)+' '+fa(d)+' '+MONTHS[m-1];};
 // </pure>
@@ -380,6 +383,7 @@ CREATE TABLE IF NOT EXISTS transactions(
   date TEXT NOT NULL,
   note TEXT NOT NULL DEFAULT '',
   account_id INTEGER,
+  liters REAL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(date);
@@ -472,6 +476,7 @@ function ensureSchema(){
     const cols=all('PRAGMA table_info(transactions)').map(c=>c.name);
     if(!cols.includes('subcategory'))db.run("ALTER TABLE transactions ADD COLUMN subcategory TEXT NOT NULL DEFAULT ''");
     if(!cols.includes('account_id'))db.run('ALTER TABLE transactions ADD COLUMN account_id INTEGER');
+    if(!cols.includes('liters'))db.run('ALTER TABLE transactions ADD COLUMN liters REAL');
   }
   db.exec(SCHEMA);
   if(!all('SELECT 1 FROM accounts').length)db.run("INSERT INTO accounts(name,initial_balance) VALUES('نقدی',0)");
@@ -529,13 +534,14 @@ function showDlg(title,body,{submit='ثبت',cancel='انصراف',danger=false,
   if(typeof dlg.showModal==='function'){if(!dlg.open)dlg.showModal();}else dlg.setAttribute('open','');
 }
 dlg.addEventListener('click',e=>{if(e.target===dlg||e.target.closest('[data-close]'))closeDlg();});
-dlg.addEventListener('input',e=>{if(e.target.matches('.amt-in'))fmtAmountInput(e.target);});
+dlg.addEventListener('input',e=>{if(e.target.matches('.amt-in'))fmtAmountInput(e.target);if(e.target.id==='f-newsub')updateLitersVisibility();});
 dlg.addEventListener('change',e=>{
   const box=e.target.closest('.jdate');if(box)refreshDays(box);
   if(e.target.id==='f-mirror'){const w=$('#f-macc-wrap');if(w)w.hidden=!e.target.checked;}
   if(e.target.name==='type'&&e.target.closest('#txform'))fillCats(e.target.value,undefined,'');
   if(e.target.id==='f-cat'){toggleNewCat();const ty=dlg.querySelector('input[name=type]:checked');fillSubs(ty?ty.value:'expense',e.target.value,'');}
-  if(e.target.id==='f-sub')toggleNewSub();
+  if(e.target.id==='f-sub'){toggleNewSub();updateLitersVisibility();}
+  if(e.target.name==='type'&&e.target.closest('#txform'))updateLitersVisibility();
 });
 function confirmDlg(title,msg,label,fn){showDlg(title,'<p class="msg">'+msg+'</p>',{submit:label,danger:true,onSubmit:fn});}
 
@@ -577,11 +583,18 @@ function readDate(fd,name,{optional=false,label='تاریخ'}={}){
 }
 function toggleNewCat(){const s=$('#f-cat'),n=$('#f-newcat');if(!s||!n)return;n.hidden=s.value!=='__new';if(!n.hidden)n.focus();}
 function toggleNewSub(){const s=$('#f-sub'),n=$('#f-newsub');if(!s||!n)return;n.hidden=s.value!=='__new';if(!n.hidden)n.focus();}
+function updateLitersVisibility(){
+  const subSel=$('#f-sub'), wrap=$('#f-liters-wrap');if(!subSel||!wrap)return;
+  const tyEl=dlg.querySelector('input[name=type]:checked'), ty=tyEl?tyEl.value:'';
+  let subVal=subSel.value;if(subVal==='__new'){const ns=$('#f-newsub');subVal=ns?ns.value.trim():'';}
+  wrap.hidden=!(ty==='expense'&&subVal===GAS_SUB);
+}
 function fillSubs(type,cat,sel){
   const s=$('#f-sub');if(!s)return;
   const cur=sel!==undefined?sel:s.value, subs=cat&&cat!=='__new'?subsFor(type,cat):[];
   s.innerHTML='<option value="">— بدون زیرگروه —</option>'+subs.map(x=>'<option value="'+esc(x)+'"'+(x===cur?' selected':'')+'>'+esc(x)+'</option>').join('')+'<option value="__new">+ زیرگروه جدید…</option>';
   const n=$('#f-newsub');if(n)n.hidden=s.value!=='__new';
+  updateLitersVisibility();
 }
 function fillCats(type,sel,subSel){
   const s=$('#f-cat');if(!s)return;
@@ -589,6 +602,7 @@ function fillCats(type,sel,subSel){
   s.innerHTML=categoriesFor(type).map(c=>'<option value="'+esc(c)+'"'+(c===cur?' selected':'')+'>'+esc(c)+'</option>').join('')+'<option value="__new">+ دستهٔ جدید…</option>';
   const n=$('#f-newcat');if(n)n.hidden=s.value!=='__new';
   fillSubs(type,s.value,subSel);
+  updateLitersVisibility();
 }
 const monthNav=()=>'<div class="mnav"><button data-act="mprev" aria-label="ماه قبل">'+CH_R+'</button><strong>'+MONTHS[state.ym.m-1]+' '+fa(state.ym.y)+'</strong><button data-act="mnext" aria-label="ماه بعد">'+CH_L+'</button></div>';
 
@@ -641,7 +655,7 @@ function renderTxList(){
   box.innerHTML='<p class="count">'+fa(list.length)+' تراکنش — مبالغ به '+esc(unit())+(state.type!=='expense'?' — جمع درآمد: '+fmtNum(inc):'')+(state.type!=='income'?' — جمع هزینه: '+fmtNum(exp):'')+'</p>'
   +groups.map(g=>'<div class="day"><h3>'+fmtJLong(g.date)+' '+fa(parseJ(g.date).y)+'</h3><ul class="rows">'+g.items.map(t=>{
     const isIn=t.type==='income';
-    return '<li class="row"><span class="lead '+(isIn?'in':'out')+'" title="'+(isIn?'درآمد':'هزینه')+'">'+(isIn?ICON_UP:ICON_DN)+'</span><div class="mid"><b>'+esc(t.category)+(t.subcategory?' / '+esc(t.subcategory):'')+'</b><small>'+[t.note,multiAcc?acctName(t.account_id):''].filter(Boolean).join(' — ')+'</small></div><div class="amt '+(isIn?'in':'out')+'">'+fmtNum(t.amount)+'</div><div class="racts"><button class="btn txt" data-act="edit-tx" data-id="'+t.id+'">ویرایش</button><button class="btn txt d" data-act="del-tx" data-id="'+t.id+'">حذف</button></div></li>';
+    return '<li class="row"><span class="lead '+(isIn?'in':'out')+'" title="'+(isIn?'درآمد':'هزینه')+'">'+(isIn?ICON_UP:ICON_DN)+'</span><div class="mid"><b>'+esc(t.category)+(t.subcategory?' / '+esc(t.subcategory):'')+'</b><small>'+[t.note,t.liters?fmtLiters(t.liters)+' لیتر':'',multiAcc?acctName(t.account_id):''].filter(Boolean).join(' — ')+'</small></div><div class="amt '+(isIn?'in':'out')+'">'+fmtNum(t.amount)+'</div><div class="racts"><button class="btn txt" data-act="edit-tx" data-id="'+t.id+'">ویرایش</button><button class="btn txt d" data-act="del-tx" data-id="'+t.id+'">حذف</button></div></li>';
   }).join('')+'</ul></div>').join('');
 }
 
@@ -698,11 +712,13 @@ function txDialog(id){
     +'<div class="field"><label for="f-acc">حساب</label><select id="f-acc" name="account_id">'+acctRows().filter(a=>!a.archived||a.id===(t?t.account_id:0)).map(a=>'<option value="'+a.id+'"'+((t?t.account_id:state.lastAccount)===a.id?' selected':'')+'>'+esc(a.name)+'</option>').join('')+'</select></div>'
     +'<div class="field"><label for="f-cat">دسته</label><select id="f-cat" name="category"></select><input id="f-newcat" name="newcat" type="text" maxlength="40" autocomplete="off" placeholder="نام دستهٔ جدید" aria-label="نام دستهٔ جدید" hidden style="margin-top:6px"></div>'
     +'<div class="field"><label for="f-sub">زیرگروه (اختیاری)</label><select id="f-sub" name="subcategory"></select><input id="f-newsub" name="newsub" type="text" maxlength="40" autocomplete="off" placeholder="نام زیرگروه جدید" aria-label="نام زیرگروه جدید" hidden style="margin-top:6px"></div>'
+    +'<div class="field" id="f-liters-wrap" hidden><label for="f-liters">مقدار بنزین (لیتر)</label><input id="f-liters" name="liters" type="text" inputmode="decimal" autocomplete="off" placeholder="مثلاً '+fa('40.5').replace('.','٫')+'" value="'+(t&&t.liters!=null?fmtLiters(t.liters):'')+'"></div>'
     +dateField('date','تاریخ',t?t.date:todayStr(),false)
     +'<div class="field"><label for="f-note">توضیح (اختیاری)</label><input id="f-note" name="note" type="text" autocomplete="off" value="'+esc(t?t.note:'')+'"></div></div>',
     {submit:t?'ذخیره تغییرات':'ثبت',onOpen:()=>fillCats(type,t?t.category:undefined,t?t.subcategory:undefined),
      onSubmit(fd){
        const ty=fd.get('type'), amt=parseAmount(fd.get('amount')), note=String(fd.get('note')).trim(), accId=+fd.get('account_id');
+       const lw=$('#f-liters-wrap'), liters=(lw&&!lw.hidden)?parseLiters(fd.get('liters')):null;
        if(!accId)throw new Error('حساب را انتخاب کنید.');
        let cat=String(fd.get('category')||'');
        if(cat==='__new'||!cat){cat=String(fd.get('newcat')||'').trim();if(!cat)throw new Error('نام دستهٔ جدید را وارد کنید.');}
@@ -712,8 +728,8 @@ function txDialog(id){
        if(sub==='__new'){sub=String(fd.get('newsub')||'').trim();if(!sub)throw new Error('نام زیرگروه جدید را وارد کنید.');}
        db.run('INSERT OR IGNORE INTO categories(type,name) VALUES(?,?)',[ty,cat]);
        if(sub)db.run('INSERT OR IGNORE INTO subcategories(category_id,name) SELECT id,? FROM categories WHERE type=? AND name=?',[sub,ty,cat]);
-       if(t)run('UPDATE transactions SET type=?,amount=?,category=?,subcategory=?,date=?,note=?,account_id=? WHERE id=?',[ty,amt,cat,sub,date,note,accId,t.id]);
-       else run('INSERT INTO transactions(type,amount,category,subcategory,date,note,account_id) VALUES(?,?,?,?,?,?,?)',[ty,amt,cat,sub,date,note,accId]);
+       if(t)run('UPDATE transactions SET type=?,amount=?,category=?,subcategory=?,date=?,note=?,account_id=?,liters=? WHERE id=?',[ty,amt,cat,sub,date,note,accId,liters,t.id]);
+       else run('INSERT INTO transactions(type,amount,category,subcategory,date,note,account_id,liters) VALUES(?,?,?,?,?,?,?,?)',[ty,amt,cat,sub,date,note,accId,liters]);
        state.lastAccount=accId;const p=parseJ(date);state.ym={y:p.y,m:p.m};
        return t?'تغییرات ذخیره شد':'ثبت شد';
      }});
@@ -964,7 +980,7 @@ function deltaAmt(diff,has){
   if(!diff)return '<span class="dlt flat">بدون تغییر</span>';
   return '<span class="dlt '+(diff>0?'good':'bad')+'">'+(diff>0?'▲ ':'▼ ')+fmtNum(Math.abs(diff))+'</span>';
 }
-const repRows=(from,to)=>all("SELECT type,category,subcategory,COUNT(*) AS n,SUM(amount) AS total FROM transactions WHERE date BETWEEN ? AND ? AND category<>'اصلاح موجودی' GROUP BY type,category,subcategory",[from,to]);
+const repRows=(from,to)=>all("SELECT type,category,subcategory,COUNT(*) AS n,SUM(amount) AS total,COALESCE(SUM(liters),0) AS liters FROM transactions WHERE date BETWEEN ? AND ? AND category<>'اصلاح موجودی' GROUP BY type,category,subcategory",[from,to]);
 function aggregate(rows,type){
   const cats=new Map();let total=0,n=0;
   for(const r of rows){
@@ -972,8 +988,8 @@ function aggregate(rows,type){
     total+=r.total;n+=r.n;
     let c=cats.get(r.category);if(!c){c={name:r.category,total:0,n:0,subs:new Map()};cats.set(r.category,c);}
     c.total+=r.total;c.n+=r.n;
-    const sk=r.subcategory||'', s=c.subs.get(sk)||{name:sk,total:0,n:0};
-    s.total+=r.total;s.n+=r.n;c.subs.set(sk,s);
+    const sk=r.subcategory||'', s=c.subs.get(sk)||{name:sk,total:0,n:0,liters:0};
+    s.total+=r.total;s.n+=r.n;s.liters+=(r.liters||0);c.subs.set(sk,s);
   }
   const list=[...cats.values()].sort((a,b)=>b.total-a.total).map(c=>({...c,subs:[...c.subs.values()].sort((a,b)=>(a.name===''?1:0)-(b.name===''?1:0)||b.total-a.total)}));
   const idx=new Map(list.map(c=>[c.name,{total:c.total,subs:new Map(c.subs.map(s=>[s.name,s.total]))}]));
@@ -1023,7 +1039,7 @@ function catReport(A,PA,type){
     const head='<span class="rname">'+(canOpen?CARET:'<span class="caret"></span>')+'<span>'+esc(c.name)+'</span>'+delta(c.total,pv?pv.total:0,goodUp,has)+'</span><span class="rval">'+fmtNum(c.total)+'<small>'+fmtPct(p)+' — '+fa(c.n)+' تراکنش</small></span><span class="rbar"><i class="'+cls+'" style="width:'+p+'%"></i></span>';
     const subs=open?'<div class="rsubs">'+c.subs.map(s=>{
       const sp=c.total?s.total/c.total*100:0, ps=pv?(pv.subs.get(s.name)||0):0;
-      return '<div class="rsub"><span class="sname'+(s.name?'':' none')+'"><span>'+(s.name?esc(s.name):'بدون زیرگروه')+'</span>'+delta(s.total,ps,goodUp,has&&!!pv)+'</span><span class="rval">'+fmtNum(s.total)+'<small>'+fmtPct(sp)+' از دسته — '+fa(s.n)+' تراکنش</small></span><span class="rbar"><i class="'+cls+'" style="width:'+sp+'%"></i></span></div>';
+      const gas=s.name===GAS_SUB&&s.liters?' — '+fmtLiters(s.liters)+' لیتر مصرف':'';return '<div class="rsub"><span class="sname'+(s.name?'':' none')+'"><span>'+(s.name?esc(s.name):'بدون زیرگروه')+'</span>'+delta(s.total,ps,goodUp,has&&!!pv)+'</span><span class="rval">'+fmtNum(s.total)+'<small>'+fmtPct(sp)+' از دسته — '+fa(s.n)+' تراکنش'+gas+'</small></span><span class="rbar"><i class="'+cls+'" style="width:'+sp+'%"></i></span></div>';
     }).join('')+'</div>':'';
     return '<div class="rcat">'+(canOpen?'<button type="button" class="rhead" data-act="rep-toggle" data-k="'+esc(c.name)+'" aria-expanded="'+(open?'true':'false')+'">'+head+'</button>':'<div class="rhead">'+head+'</div>')+subs+'</div>';
   }).join('')+'</div>';
@@ -1090,9 +1106,9 @@ async function exportDb(){
   }else{anchorSave(base+'.sqlite',[bytes],'application/x-sqlite3');toast('دانلود شروع شد');}
 }
 async function exportCsv(){
-  const rows=all('SELECT date,type,category,subcategory,amount,note,account_id FROM transactions ORDER BY date,id');
+  const rows=all('SELECT date,type,category,subcategory,amount,note,account_id,liters FROM transactions ORDER BY date,id');
   const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
-  const csv='\uFEFF'+['تاریخ شمسی,نوع,دسته,زیرگروه,مبلغ,توضیح,حساب'].concat(rows.map(r=>[r.date,r.type==='income'?'درآمد':'هزینه',q(r.category),q(r.subcategory),r.amount,q(r.note),q(acctName(r.account_id))].join(','))).join('\r\n');
+  const csv='\uFEFF'+['تاریخ شمسی,نوع,دسته,زیرگروه,مبلغ,توضیح,حساب,لیتر'].concat(rows.map(r=>[r.date,r.type==='income'?'درآمد':'هزینه',q(r.category),q(r.subcategory),r.amount,q(r.note),q(acctName(r.account_id)),r.liters==null?'':r.liters].join(','))).join('\r\n');
   await saveCsv('transactions-'+todayStr()+'.csv',csv);
 }
 async function importDb(file){
