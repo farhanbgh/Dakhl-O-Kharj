@@ -246,6 +246,8 @@ span.caret{display:inline-block}
 .rsub .sname.none{color:var(--muted)}
 .rsub .rval{font-weight:500}
 .rsub .rbar{height:5px}
+button.rsub{background:none;border:0;color:inherit;font:inherit;font-size:.92rem;text-align:start;cursor:pointer;padding:6px 8px;margin:-6px -8px;border-radius:8px;width:calc(100% + 16px)}
+button.rsub:hover,button.rsub:focus-visible{background:var(--soft)}
 .row.ro .lead{grid-row:auto}
 
 /* fab + toast */
@@ -384,6 +386,7 @@ CREATE TABLE IF NOT EXISTS transactions(
   note TEXT NOT NULL DEFAULT '',
   account_id INTEGER,
   liters REAL,
+  link_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(date);
@@ -477,6 +480,7 @@ function ensureSchema(){
     if(!cols.includes('subcategory'))db.run("ALTER TABLE transactions ADD COLUMN subcategory TEXT NOT NULL DEFAULT ''");
     if(!cols.includes('account_id'))db.run('ALTER TABLE transactions ADD COLUMN account_id INTEGER');
     if(!cols.includes('liters'))db.run('ALTER TABLE transactions ADD COLUMN liters REAL');
+    if(!cols.includes('link_id'))db.run('ALTER TABLE transactions ADD COLUMN link_id INTEGER');
   }
   db.exec(SCHEMA);
   if(!all('SELECT 1 FROM accounts').length)db.run("INSERT INTO accounts(name,initial_balance) VALUES('نقدی',0)");
@@ -533,6 +537,7 @@ function showDlg(title,body,{submit='ثبت',cancel='انصراف',danger=false,
   if(onOpen)onOpen(f);
   if(typeof dlg.showModal==='function'){if(!dlg.open)dlg.showModal();}else dlg.setAttribute('open','');
 }
+dlg.addEventListener('close',()=>{state.subReopen=null;});
 dlg.addEventListener('click',e=>{if(e.target===dlg||e.target.closest('[data-close]'))closeDlg();});
 dlg.addEventListener('input',e=>{if(e.target.matches('.amt-in'))fmtAmountInput(e.target);if(e.target.id==='f-newsub')updateLitersVisibility();});
 dlg.addEventListener('change',e=>{
@@ -607,8 +612,77 @@ function fillCats(type,sel,subSel){
 const monthNav=()=>'<div class="mnav"><button data-act="mprev" aria-label="ماه قبل">'+CH_R+'</button><strong>'+MONTHS[state.ym.m-1]+' '+fa(state.ym.y)+'</strong><button data-act="mnext" aria-label="ماه بعد">'+CH_L+'</button></div>';
 
 /* ---------- views ---------- */
+/* ---------- budget split (virtual, computed from income) ---------- */
+const BUD=[['need','ضروری'],['want','خواسته'],['save','پس‌انداز']];
+const budGet=(k,d)=>{const v=state.settings[k];return v==null||v===''?d:v;};
+function budCfg(){
+  let map={};try{map=JSON.parse(state.settings.bud_map||'{}');}catch(e){}
+  const def={};for(const c of ['خوراک و خرید روزانه','مسکن و اجاره','حمل‌ونقل','قبض و شارژ','سلامت و درمان','آموزش'])def[c]='need';
+  return {mode:budGet('bud_mode','std'),fixed:+budGet('bud_fixed',0)||0,p:{need:+budGet('bud_p_need',50),want:+budGet('bud_p_want',30),save:+budGet('bud_p_save',20)},map:{...def,...map}};
+}
+const budBucket=(c,cat)=>cat==='پرداخت بدهی'?(c.mode==='rebuild'?'debt':'save'):(c.map[cat]||'want');
+function budCard(inc,list){
+  const c=budCfg();if(c.mode==='off')return '';
+  const head='<section class="sec"><h2>بودجه بر اساس موجودی<button class="btn txt" data-act="nav" data-view="set">تنظیم بودجه</button></h2>';
+  const bal=acctRows().filter(a=>!a.archived).reduce((x,a)=>x+a.balance,0);
+  if(bal<=0)return head+'<div class="calm">موجودی کل حساب‌ها صفر یا منفی است؛ تفکیکی برای نمایش وجود ندارد.</div></section>';
+  const sp={need:0,want:0,save:0,debt:0};for(const t of list)if(t.type==='expense')sp[budBucket(c,t.category)]+=t.amount;
+  const rows=[];let base=bal,note='درصدها روی کل موجودی حساب‌ها اعمال شده است.';
+  if(c.mode==='rebuild'){const d=Math.min(Math.max(0,c.fixed-sp.debt),bal);base=bal-d;rows.push(['بدهی (قسط ثابت)','debt',d]);note='قسط ثابت '+fmtNum(c.fixed)+' '+esc(unit())+' ابتدا کنار گذاشته می‌شود (مانده‌ی قسط این ماه از موجودی کم می‌شود) و درصدها روی باقی‌مانده ('+fmtNum(base)+') اعمال می‌شود.';}
+  for(const [k,n] of BUD)rows.push([n+' ('+fa(c.p[k])+'٪)',k,Math.round(base*c.p[k]/100)]);
+  return head+'<p class="sub">موجودی کل حساب‌ها: <b>'+fmtNum(bal)+'</b> '+esc(unit())+'</p><div class="cats" style="margin-top:10px">'
+    +rows.map(([n,k,a])=>{
+      const u=sp[k],tot=a+u,w=tot>0?u/tot*100:0,col=w>=100?'var(--exp)':w>=90?'var(--warn)':'var(--green)';
+      return '<div><div class="cat"><span>'+n+'</span><span class="t"><i style="width:'+w+'%;background:'+col+'"></i></span><span>'+fa(Math.round(w))+'٪</span></div><div class="sub" style="font-size:.8rem;margin-top:2px">قابل استفاده: <b>'+fmtNum(a)+'</b> &middot; خرج‌شده در این ماه: <b>'+fmtNum(u)+'</b></div></div>';
+    }).join('')+'</div><p class="sub" style="margin-top:10px">نوار نشان می‌دهد چند درصد از بودجهٔ این ماهِ هر سطل (قابل‌استفاده + خرج‌شده) مصرف شده است. '+note+'</p></section>';
+}
+function budSet(){
+  const c=budCfg(),opt=(v,l,cur)=>'<option value="'+v+'"'+(v===cur?' selected':'')+'>'+l+'</option>';
+  const sum=c.p.need+c.p.want+c.p.save;
+  const cats=categoriesFor('expense').filter(n=>n!=='پرداخت بدهی'&&n!=='اصلاح موجودی'&&n!=='انتقال');
+  return '<section><h2>تفکیک خودکار بودجه</h2><p>جمع موجودی همهٔ حساب‌ها بین سطل‌های ضروری، خواسته و پس‌انداز تقسیم می‌شود (فقط محاسبه است و تراکنش‌ها تغییر نمی‌کنند). حالت «بقا و بازسازی» ابتدا قسط ثابت را کم می‌کند و درصدها را روی باقی‌مانده می‌زند.</p>'
+  +'<div class="field"><label for="s-bmode">حالت</label><select id="s-bmode">'+opt('std','استاندارد (درصد از کل موجودی)',c.mode)+opt('rebuild','بقا و بازسازی (اول قسط ثابت)',c.mode)+opt('off','غیرفعال',c.mode)+'</select></div>'
+  +(c.mode==='rebuild'?'<div class="field" style="margin-top:12px"><label for="s-bfix">قسط ثابت ماهانه ('+esc(unit())+')</label><input id="s-bfix" type="text" inputmode="numeric" autocomplete="off" value="'+(c.fixed?fmtNum(c.fixed):'')+'"></div>':'')
+  +BUD.map(([k,n])=>'<div class="field" style="margin-top:12px"><label for="s-bp-'+k+'">سهم '+n+' (٪)</label><input id="s-bp-'+k+'" type="text" inputmode="numeric" autocomplete="off" value="'+fa(c.p[k])+'"></div>').join('')
+  +(sum!==100?'<p class="sub" style="color:var(--warn);margin-top:8px">مجموع درصدها '+fa(sum)+' است؛ بهتر است ۱۰۰ باشد.</p>':'')
+  +'<h3 style="margin:16px 0 8px;font-size:.95rem">هر دستهٔ هزینه در کدام سطل حساب شود؟</h3>'
+  +cats.map(n=>'<div class="field" style="margin-bottom:8px"><label>'+esc(n)+'</label><select data-bcat="'+esc(n)+'">'+BUD.map(([k,l])=>opt(k,l,budBucket(c,n))).join('')+'</select></div>').join('')
+  +'<p class="sub" style="margin-top:8px">دستهٔ «پرداخت بدهی» خودکار در سطل بدهی/پس‌انداز حساب می‌شود.</p></section>';
+}
+
+function budSplitMonth(y,m){
+  const c=budCfg(),A=k=>0/*تفکیک خودکار به حساب‌ها غیرفعال شد*/,from=jstr(y,m,1),to=jstr(y,m,31);
+  db.run("DELETE FROM transactions WHERE category='انتقال' AND link_id IS NOT NULL AND (link_id NOT IN (SELECT id FROM transactions) OR link_id IN (SELECT id FROM transactions WHERE type='expense' AND category<>'انتقال'))");
+  db.run("DELETE FROM transactions WHERE category='انتقال' AND date BETWEEN ? AND ? AND link_id IN (SELECT id FROM transactions WHERE type='income' AND category<>'انتقال')",[from,to]);
+  const since=state.settings.bud_since||'';
+  if(c.mode!=='off'&&since&&BUD.some(([k])=>A(k))){
+    let fix=c.mode==='rebuild'?c.fixed:0;
+    for(const inc of all("SELECT * FROM transactions WHERE type='income' AND category IN (SELECT name FROM categories WHERE type='income') AND category NOT IN ('اصلاح موجودی','انتقال','دریافت طلب') AND date BETWEEN ? AND ? AND date>=? ORDER BY date,id",[from,to,since])){
+      const r=Math.min(fix,inc.amount);fix-=r;const base=inc.amount-r;
+      for(const [k,n] of BUD){
+        const d=A(k),a=Math.round(base*c.p[k]/100);if(!d||d===inc.account_id||a<=0)continue;
+        db.run('INSERT INTO transactions(type,amount,category,date,note,account_id,link_id) VALUES(?,?,?,?,?,?,?)',['expense',a,'انتقال',inc.date,'سهم '+n,inc.account_id,inc.id]);
+        db.run('INSERT INTO transactions(type,amount,category,date,note,account_id,link_id) VALUES(?,?,?,?,?,?,?)',['income',a,'انتقال',inc.date,'سهم '+n,d,inc.id]);
+      }
+    }
+  }
+  persist();
+}
+const budRe=()=>budSplitMonth(state.ym.y,state.ym.m);
+function xferDialog(){
+  const accs=acctRows().filter(a=>!a.archived);if(accs.length<2){toast('برای انتقال حداقل دو حساب لازم است.');return;}
+  const o=i=>accs.map((a,j)=>'<option value="'+a.id+'"'+(j===i?' selected':'')+'>'+esc(a.name)+'</option>').join('');
+  showDlg('انتقال بین حساب‌ها','<div class="field"><label for="x-from">از حساب</label><select id="x-from" name="from">'+o(0)+'</select></div><div class="field"><label for="x-to">به حساب</label><select id="x-to" name="to">'+o(1)+'</select></div>'+amountField('amount','مبلغ',0)+dateField('date','تاریخ',todayStr(),false),{submit:'ثبت انتقال',onSubmit(fd){
+    const f=+fd.get('from'),t=+fd.get('to'),amt=parseAmount(fd.get('amount')),date=readDate(fd,'date');
+    if(f===t)throw new Error('حساب مبدأ و مقصد باید متفاوت باشند.');if(amt<=0)throw new Error('مبلغ را وارد کنید.');
+    db.run('INSERT INTO transactions(type,amount,category,date,note,account_id) VALUES(?,?,?,?,?,?)',['expense',amt,'انتقال',date,'انتقال به '+acctName(t),f]);const id=lastId();
+    db.run('INSERT INTO transactions(type,amount,category,date,note,account_id,link_id) VALUES(?,?,?,?,?,?,?)',['income',amt,'انتقال',date,'انتقال از '+acctName(f),t,id]);
+    persist();return 'انتقال ثبت شد';
+  }});
+}
+
 function viewDash(){
-  const {y,m}=state.ym, list=txMonth(y,m).filter(t=>t.category!=='اصلاح موجودی'), n=jLen(y,m), today=todayStr();
+  const {y,m}=state.ym, list=txMonth(y,m).filter(t=>!['اصلاح موجودی','انتقال'].includes(t.category)), n=jLen(y,m), today=todayStr();
   let inc=0,exp=0;const di=new Array(n+1).fill(0),de=new Array(n+1).fill(0),cat={};
   for(const t of list){const d=+t.date.slice(8);if(t.type==='income'){inc+=t.amount;di[d]+=t.amount;}else{exp+=t.amount;de[d]+=t.amount;cat[t.category]=(cat[t.category]||0)+t.amount;}}
   const bal=inc-exp, mx=Math.max(1,...di,...de);
@@ -631,6 +705,7 @@ function viewDash(){
 
   return '<header class="ph"><h1>داشبورد</h1>'+monthNav()+'</header>'
   +'<section class="strip" aria-label="خلاصهٔ ماه"><div><span class="k">درآمد</span><b class="inc">'+fmtNum(inc)+'</b></div><div><span class="k">هزینه</span><b class="exp">'+fmtNum(exp)+'</b></div><div><span class="k">'+(bal<0?'کسری ماه':'مانده ماه')+'</span><b class="'+(bal<0?'exp':'inc')+'">'+fmtNum(Math.abs(bal))+' <span class="u">'+esc(unit())+'</span></b></div></section>'
+  +budCard(inc,list)
   +'<section class="sec"><h2>روند روزانه<span class="legend"><span><i style="background:var(--green)"></i>درآمد</span><span><i style="background:var(--exp)"></i>هزینه</span></span></h2><div class="chart" role="img" aria-label="نمودار روزانهٔ درآمد و هزینه '+MONTHS[m-1]+'">'+bars+'</div></section>'
   +'<section class="sec"><h2>سررسیدهای نزدیک</h2>'+alerts+'<div class="totals"><span>بدهی باز: <b>'+fmtNum(sum(debts))+'</b> '+esc(unit())+'</span><span>طلب باز: <b>'+fmtNum(sum(credits))+'</b> '+esc(unit())+'</span></div></section>'
   +'<section class="sec"><h2>موجودی حساب‌ها<button class="btn txt" data-act="nav" data-view="acc">مدیریت حساب‌ها</button></h2>'+accHtml+'</section>'
@@ -650,7 +725,7 @@ function renderTxList(){
   if(q)list=list.filter(t=>(t.category+' '+t.subcategory+' '+t.note+' '+acctName(t.account_id)).includes(q));
   const box=$('#txlist');if(!box)return;
   if(!list.length){box.innerHTML='<div class="empty">'+(q||state.type!=='all'?'موردی با این فیلتر پیدا نشد.':'هنوز تراکنشی در این ماه ثبت نشده. با دکمهٔ «ثبت جدید» اولین مورد را اضافه کنید.')+'</div>';return;}
-  const inc=list.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0), exp=list.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const real=list.filter(t=>t.category!=='انتقال'), inc=real.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0), exp=real.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
   const groups=[];for(const t of list){const g=groups[groups.length-1];if(g&&g.date===t.date)g.items.push(t);else groups.push({date:t.date,items:[t]});}
   box.innerHTML='<p class="count">'+fa(list.length)+' تراکنش — مبالغ به '+esc(unit())+(state.type!=='expense'?' — جمع درآمد: '+fmtNum(inc):'')+(state.type!=='income'?' — جمع هزینه: '+fmtNum(exp):'')+'</p>'
   +groups.map(g=>'<div class="day"><h3>'+fmtJLong(g.date)+' '+fa(parseJ(g.date).y)+'</h3><ul class="rows">'+g.items.map(t=>{
@@ -688,6 +763,7 @@ function viewSet(){
   +(state.storageOk?'':'<div class="banner">ذخیرهٔ خودکار در این مرورگر کار نمی‌کند (مثلاً حالت خصوصی). حتماً فایل پشتیبان بگیرید.</div>')
   +'<div class="set">'
   +'<section><h2>عمومی</h2><p>واحد نمایش مبالغ و مقدار پیش‌آگاهی سررسیدها.</p><div class="field"><label for="s-unit">واحد پول</label><select id="s-unit"><option'+(unit()==='تومان'?' selected':'')+'>تومان</option><option'+(unit()==='ریال'?' selected':'')+'>ریال</option></select></div><div class="field" style="margin-top:12px"><label for="s-warn">هشدار سررسید: چند روز قبل از موعد نمایش داده شود؟</label><input id="s-warn" type="text" inputmode="numeric" value="'+fa(warnDays())+'" style="max-width:120px"></div></section>'
+  +budSet()
   +'<section><h2>دسته‌بندی‌ها</h2><p>دسته‌های هزینه و درآمد را اضافه، ویرایش یا حذف کنید.</p><button class="btn" data-act="go-cats">مدیریت دسته‌ها</button></section>'
   +'<section><h2>دانلود پشتیبان</h2><p>'+(hosted?'همان فایل پایگاه‌داده (SQLite) بدون هیچ تغییری دانلود می‌شود. این محیط اجازهٔ ذخیره با پسوند <span dir="ltr">.sqlite</span> را نمی‌دهد، برای همین <span dir="ltr">.txt</span> به انتهای نام فایل اضافه می‌شود. محتوای فایل همان SQLite است: برای بازیابی همین فایل را انتخاب کنید، و برای باز کردن در برنامه‌های SQLite پسوند <span dir="ltr">.txt</span> را حذف کنید.':'فایل کامل پایگاه‌داده (SQLite) را دانلود کنید و هر زمان خواستید بازگردانی کنید.')+'</p><div class="brow"><button class="btn primary" data-act="export-db">دانلود پایگاه‌داده</button><button class="btn" data-act="export-csv">خروجی CSV تراکنش‌ها</button></div></section>'
   +'<section><h2>بازیابی از فایل</h2><p>فایل پشتیبانی را که قبلاً از همین برنامه دانلود کرده‌اید انتخاب کنید (با هر پسوندی، حتی با <span dir="ltr">.txt</span> در انتهای نام). داده‌های فعلی با محتوای آن جایگزین می‌شود.</p><label class="btn" for="imp" style="cursor:pointer">انتخاب فایل پشتیبان</label><input id="imp" type="file" hidden></section>'
@@ -700,11 +776,13 @@ function render(){
   const v={dash:viewDash,tx:viewTx,debt:()=>viewDebts('debt'),credit:()=>viewDebts('credit'),set:viewSet,cats:viewCats,rep:viewReports,acc:viewAccounts}[state.view];
   $('#main').innerHTML=v();
   if(state.view==='tx')renderTxList();
+  if(state.subReopen&&state.view==='rep'){const x=state.subReopen;state.subReopen=null;repSubDialog(x.c,x.s);}
 }
 
 /* ---------- dialogs ---------- */
 function txDialog(id){
   const t=id?all('SELECT * FROM transactions WHERE id=?',[id])[0]:null;
+  if(t&&t.category==='انتقال'){toast('انتقال‌ها قابل ویرایش نیستند؛ حذف و دوباره ثبت کنید.');return;}
   const type=t?t.type:'expense';
   showDlg(t?'ویرایش تراکنش':'ثبت تراکنش جدید',
     '<div id="txform"><div class="field"><span class="lbl">نوع</span><div class="seg"><label class="e"><input type="radio" name="type" value="expense"'+(type==='expense'?' checked':'')+'><span>هزینه</span></label><label class="i"><input type="radio" name="type" value="income"'+(type==='income'?' checked':'')+'><span>درآمد</span></label></div></div>'
@@ -730,14 +808,18 @@ function txDialog(id){
        if(sub)db.run('INSERT OR IGNORE INTO subcategories(category_id,name) SELECT id,? FROM categories WHERE type=? AND name=?',[sub,ty,cat]);
        if(t)run('UPDATE transactions SET type=?,amount=?,category=?,subcategory=?,date=?,note=?,account_id=?,liters=? WHERE id=?',[ty,amt,cat,sub,date,note,accId,liters,t.id]);
        else run('INSERT INTO transactions(type,amount,category,subcategory,date,note,account_id,liters) VALUES(?,?,?,?,?,?,?,?)',[ty,amt,cat,sub,date,note,accId,liters]);
-       state.lastAccount=accId;const p=parseJ(date);state.ym={y:p.y,m:p.m};
+       state.lastAccount=accId;const p=parseJ(date);state.ym={y:p.y,m:p.m};[p,...(t?[parseJ(t.date)]:[])].forEach(q=>budSplitMonth(q.y,q.m));
        return t?'تغییرات ذخیره شد':'ثبت شد';
      }});
 }
 function delTx(id){
   const t=all('SELECT * FROM transactions WHERE id=?',[id])[0];if(!t)return;
-  confirmDlg('حذف تراکنش','«'+esc(t.category)+'» به مبلغ '+fmtNum(t.amount)+' '+esc(unit())+' حذف شود؟','حذف',()=>{
-    db.run('UPDATE payments SET tx_id=NULL WHERE tx_id=?',[id]);run('DELETE FROM transactions WHERE id=?',[id]);return 'حذف شد';
+  const lk=t.category==='انتقال'&&t.link_id?all('SELECT * FROM transactions WHERE id=?',[t.link_id])[0]:null;
+  if(lk&&lk.category!=='انتقال'){toast('این انتقال خودکار است و با حذف یا ویرایش درآمد مربوطه حذف می‌شود.');return;}
+  confirmDlg('حذف تراکنش','«'+esc(t.category)+'» به مبلغ '+fmtNum(t.amount)+' '+esc(unit())+' حذف شود؟'+(t.category==='انتقال'?' (هر دو طرف انتقال حذف می‌شود)':''),'حذف',()=>{
+    if(t.category==='انتقال'){const root=lk?lk.id:t.id;db.run('DELETE FROM transactions WHERE id=? OR link_id=?',[root,root]);}
+    else{db.run('UPDATE payments SET tx_id=NULL WHERE tx_id=?',[id]);db.run("DELETE FROM transactions WHERE id=? OR (category='انتقال' AND link_id=?)",[id,id]);}
+    const q=parseJ(t.date);budSplitMonth(q.y,q.m);return 'حذف شد';
   });
 }
 function debtDialog(kind,id){
@@ -804,7 +886,7 @@ function viewAccounts(){
   const card=a=>'<article class="item"><div class="top"><div><h3>'+esc(a.name)+'</h3><p class="note">موجودی اولیه: '+fmtNum(a.initial_balance)+' '+esc(unit())+'</p></div><span class="pill '+(a.balance<0?'over':'ok')+'">'+fmtNum(a.balance)+'</span></div>'
     +'<div class="nums"><div><small>واریزی‌ها</small><b class="inc">'+fmtNum(a.inc)+'</b></div><div><small>برداشت‌ها</small><b class="exp">'+fmtNum(a.exp)+'</b></div><div><small>موجودی فعلی</small><b class="'+(a.balance<0?'exp':'inc')+'">'+fmtNum(a.balance)+'</b></div></div>'
     +'<div class="btns"><button class="btn txt" data-act="adj-acc" data-id="'+a.id+'">ویرایش موجودی فعلی</button><button class="btn txt" data-act="edit-acc" data-id="'+a.id+'">ویرایش نام و موجودی اولیه</button>'+(a.archived?'<button class="btn txt" data-act="unarch-acc" data-id="'+a.id+'">فعال‌سازی</button>':(active.length>1?'<button class="btn txt" data-act="arch-acc" data-id="'+a.id+'">آرشیو</button>':''))+'<button class="btn txt d" data-act="del-acc" data-id="'+a.id+'">حذف</button></div></article>';
-  return '<header class="ph"><div><h1>حساب‌ها</h1><p class="sub">موجودی هر حساب با ثبت هزینه و درآمد به‌روز می‌شود.</p></div><div class="acts"><button class="btn primary" data-act="new-acc">+ حساب جدید</button></div></header>'
+  return '<header class="ph"><div><h1>حساب‌ها</h1><p class="sub">موجودی هر حساب با ثبت هزینه و درآمد به‌روز می‌شود.</p></div><div class="acts"><button class="btn" data-act="xfer">انتقال بین حساب‌ها</button><button class="btn primary" data-act="new-acc">+ حساب جدید</button></div></header>'
   +'<section class="strip"><div><span class="k">جمع موجودی</span><b class="'+(total<0?'exp':'inc')+'">'+fmtNum(total)+' <span class="u">'+esc(unit())+'</span></b></div><div><span class="k">تعداد حساب</span><b>'+fa(active.length)+'</b></div></section>'
   +'<div class="items">'+active.map(card).join('')+'</div>'
   +(archived.length?'<details class="done"><summary>آرشیو شده‌ها ('+fa(archived.length)+')</summary><div class="items">'+archived.map(card).join('')+'</div></details>':'');
@@ -980,7 +1062,7 @@ function deltaAmt(diff,has){
   if(!diff)return '<span class="dlt flat">بدون تغییر</span>';
   return '<span class="dlt '+(diff>0?'good':'bad')+'">'+(diff>0?'▲ ':'▼ ')+fmtNum(Math.abs(diff))+'</span>';
 }
-const repRows=(from,to)=>all("SELECT type,category,subcategory,COUNT(*) AS n,SUM(amount) AS total,COALESCE(SUM(liters),0) AS liters FROM transactions WHERE date BETWEEN ? AND ? AND category<>'اصلاح موجودی' GROUP BY type,category,subcategory",[from,to]);
+const repRows=(from,to)=>all("SELECT type,category,subcategory,COUNT(*) AS n,SUM(amount) AS total,COALESCE(SUM(liters),0) AS liters FROM transactions WHERE date BETWEEN ? AND ? AND category NOT IN ('اصلاح موجودی','انتقال') GROUP BY type,category,subcategory",[from,to]);
 function aggregate(rows,type){
   const cats=new Map();let total=0,n=0;
   for(const r of rows){
@@ -1009,7 +1091,7 @@ function previousRange(rg){
   return {from:jstr(a.jy,a.jm,a.jd),to:jstr(b.jy,b.jm,b.jd)};
 }
 function buckets(rg){
-  const sums=all("SELECT date,type,SUM(amount) AS s FROM transactions WHERE date BETWEEN ? AND ? AND category<>'اصلاح موجودی' GROUP BY date,type",[rg.from,rg.to]);
+  const sums=all("SELECT date,type,SUM(amount) AS s FROM transactions WHERE date BETWEEN ? AND ? AND category NOT IN ('اصلاح موجودی','انتقال') GROUP BY date,type",[rg.from,rg.to]);
   const days=jdnOf(rg.to)-jdnOf(rg.from)+1, byMonth=state.rep.mode==='year'||days>62, today=todayStr(), out=[], idx=new Map();
   if(!byMonth){
     for(let j=jdnOf(rg.from);j<=jdnOf(rg.to);j++){
@@ -1039,12 +1121,20 @@ function catReport(A,PA,type){
     const head='<span class="rname">'+(canOpen?CARET:'<span class="caret"></span>')+'<span>'+esc(c.name)+'</span>'+delta(c.total,pv?pv.total:0,goodUp,has)+'</span><span class="rval">'+fmtNum(c.total)+'<small>'+fmtPct(p)+' — '+fa(c.n)+' تراکنش</small></span><span class="rbar"><i class="'+cls+'" style="width:'+p+'%"></i></span>';
     const subs=open?'<div class="rsubs">'+c.subs.map(s=>{
       const sp=c.total?s.total/c.total*100:0, ps=pv?(pv.subs.get(s.name)||0):0;
-      const gas=s.name===GAS_SUB&&s.liters?' — '+fmtLiters(s.liters)+' لیتر مصرف':'';return '<div class="rsub"><span class="sname'+(s.name?'':' none')+'"><span>'+(s.name?esc(s.name):'بدون زیرگروه')+'</span>'+delta(s.total,ps,goodUp,has&&!!pv)+'</span><span class="rval">'+fmtNum(s.total)+'<small>'+fmtPct(sp)+' از دسته — '+fa(s.n)+' تراکنش'+gas+'</small></span><span class="rbar"><i class="'+cls+'" style="width:'+sp+'%"></i></span></div>';
+      const gas=s.name===GAS_SUB&&s.liters?' — '+fmtLiters(s.liters)+' لیتر مصرف':'';return '<button type="button" class="rsub" data-act="rep-sub" data-c="'+esc(c.name)+'" data-s="'+esc(s.name)+'" title="نمایش تراکنش‌ها"><span class="sname'+(s.name?'':' none')+'"><span>'+(s.name?esc(s.name):'بدون زیرگروه')+'</span>'+delta(s.total,ps,goodUp,has&&!!pv)+'</span><span class="rval">'+fmtNum(s.total)+'<small>'+fmtPct(sp)+' از دسته — '+fa(s.n)+' تراکنش'+gas+'</small></span><span class="rbar"><i class="'+cls+'" style="width:'+sp+'%"></i></span></button>';
     }).join('')+'</div>':'';
     return '<div class="rcat">'+(canOpen?'<button type="button" class="rhead" data-act="rep-toggle" data-k="'+esc(c.name)+'" aria-expanded="'+(open?'true':'false')+'">'+head+'</button>':'<div class="rhead">'+head+'</div>')+subs+'</div>';
   }).join('')+'</div>';
 }
 function withSubs(A,type){return A.cats.filter(c=>c.subs.some(s=>s.name)).map(c=>type+'|'+c.name);}
+function repSubDialog(cat,sub){
+  const rg=currentRange(),type=state.rep.type,multi=acctRows().length>1;
+  const rows=all('SELECT * FROM transactions WHERE type=? AND category=? AND subcategory=? AND date BETWEEN ? AND ? ORDER BY date DESC,id DESC',[type,cat,sub,rg.from,rg.to]);
+  const total=rows.reduce((x,t)=>x+t.amount,0);
+  const body='<p class="sub">'+fmtJ(rg.from)+' تا '+fmtJ(rg.to)+' — '+fa(rows.length)+' تراکنش — جمع <b>'+fmtNum(total)+'</b> '+esc(unit())+'</p>'
+    +(rows.length?'<ul class="rows" style="max-height:55vh;overflow:auto;margin-top:10px">'+rows.map(t=>'<li class="row" style="display:flex;align-items:center;gap:8px"><div class="mid" style="flex:1;min-width:0"><b>'+fmtJ(t.date)+'</b><small>'+[t.note,t.liters?fmtLiters(t.liters)+' لیتر':'',multi?acctName(t.account_id):''].filter(Boolean).map(esc).join(' — ')+'</small></div><div class="amt '+(type==='income'?'in':'out')+'">'+fmtNum(t.amount)+'</div><span style="display:flex;gap:2px"><button type="button" class="btn txt" data-act="rep-edit" data-id="'+t.id+'" data-c="'+esc(cat)+'" data-s="'+esc(sub)+'">ویرایش</button><button type="button" class="btn txt d" data-act="rep-del" data-id="'+t.id+'" data-c="'+esc(cat)+'" data-s="'+esc(sub)+'">حذف</button></span></li>').join('')+'</ul>':'<div class="empty">تراکنشی پیدا نشد.</div>');
+  showDlg(esc(cat)+(sub?' / '+esc(sub):' — بدون زیرگروه'),body,{cancel:'بستن',onSubmit(){},onOpen:f=>{const b=f.querySelector('button[type=submit]');if(b)b.remove();}});
+}
 function toggleAllSubs(){
   const rg=currentRange(), type=state.rep.type, keys=withSubs(aggregate(repRows(rg.from,rg.to),type),type);
   const allOpen=keys.length>0&&keys.every(k=>state.rep.open[k]);
@@ -1058,7 +1148,7 @@ function viewReports(){
   const today=todayStr(), endEff=rg.to<today?rg.to:today, days=Math.max(1,jdnOf(endEff)-jdnOf(rg.from)+1);
   const A=type==='income'?I:E, PA=type==='income'?pI:pE, label=type==='income'?'درآمد':'هزینه';
   const bk=buckets(rg), keys=withSubs(A,type), allOpen=keys.length>0&&keys.every(k=>r.open[k]);
-  const top=all("SELECT * FROM transactions WHERE type=? AND date BETWEEN ? AND ? AND category<>'اصلاح موجودی' ORDER BY amount DESC, date DESC, id DESC LIMIT 5",[type,rg.from,rg.to]);
+  const top=all("SELECT * FROM transactions WHERE type=? AND date BETWEEN ? AND ? AND category NOT IN ('اصلاح موجودی','انتقال') ORDER BY amount DESC, date DESC, id DESC LIMIT 5",[type,rg.from,rg.to]);
   const chips=(act,attr,items,cur)=>'<div class="chips" role="group">'+items.map(([k,l])=>'<button data-act="'+act+'" data-'+attr+'="'+k+'" class="'+(cur===k?'on':'')+'">'+l+'</button>').join('')+'</div>';
   let nav='';
   if(r.mode==='month')nav=monthNav();
@@ -1153,6 +1243,7 @@ document.addEventListener('click',e=>{
     case 'export-db':exportDb();break;
     case 'export-csv':exportCsv();break;
     case 'reset':resetAll();break;
+    case 'xfer':xferDialog();break;
     case 'go-cats':state.back=state.view==='tx'?'tx':'set';state.view='cats';render();window.scrollTo(0,0);break;
     case 'ctype':state.catType=b.dataset.t;render();break;
     case 'edit-cat':catDialog(id);break;
@@ -1172,6 +1263,9 @@ document.addEventListener('click',e=>{
     case 'ynext':state.rep.y++;render();break;
     case 'rep-toggle':{const k=state.rep.type+'|'+b.dataset.k;state.rep.open[k]=!state.rep.open[k];render();break;}
     case 'rep-all':toggleAllSubs();break;
+    case 'rep-sub':repSubDialog(b.dataset.c,b.dataset.s);break;
+    case 'rep-edit':state.subReopen={c:b.dataset.c,s:b.dataset.s};txDialog(+b.dataset.id);break;
+    case 'rep-del':state.subReopen={c:b.dataset.c,s:b.dataset.s};delTx(+b.dataset.id);break;
     case 'rep-csv':exportReportCsv();break;
   }
 });
@@ -1191,6 +1285,12 @@ document.addEventListener('change',e=>{
   const jb=e.target.closest&&e.target.closest('.jdate');if(jb&&!dlg.contains(jb))refreshDays(jb);
   if(e.target.id==='s-unit'){setSetting('unit',e.target.value);toast('ذخیره شد');}
   if(e.target.id==='s-warn'){const n=Math.max(1,Math.min(90,parseInt(en(e.target.value),10)||7));setSetting('warn',n);e.target.value=fa(n);toast('ذخیره شد');}
+  const tid=e.target.id||'';
+  if(tid==='s-bmode'){setSetting('bud_mode',e.target.value);budRe();render();}
+  else if(tid==='s-bfix'){setSetting('bud_fixed',parseInt(en(e.target.value).replace(/\D/g,''),10)||0);budRe();render();}
+  else if(tid.startsWith('s-bp-')){setSetting('bud_p_'+tid.slice(5),Math.max(0,Math.min(100,parseInt(en(e.target.value),10)||0)));budRe();render();}
+  else if(tid.startsWith('s-bacc-')){setSetting('bud_acc_'+tid.slice(7),e.target.value);if(e.target.value&&!state.settings.bud_since)setSetting('bud_since',todayStr());budRe();render();}
+  else if(e.target.dataset&&e.target.dataset.bcat){const c=budCfg();c.map[e.target.dataset.bcat]=e.target.value;setSetting('bud_map',JSON.stringify(c.map));render();}
   if(e.target.id==='imp'&&e.target.files[0]){importDb(e.target.files[0]);e.target.value='';}
 });
 
