@@ -508,7 +508,8 @@ const txMonth=(y,m)=>all('SELECT * FROM transactions WHERE date BETWEEN ? AND ? 
 function debtRows(kind){
   return all('SELECT d.*, COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.debt_id=d.id),0) AS paid FROM debts d WHERE d.kind=?',[kind]).map(r=>({...r,remaining:r.amount-r.paid}));
 }
-const catRows=type=>all("SELECT c.id,c.name,(SELECT COUNT(*) FROM transactions t WHERE t.type=c.type AND t.category=c.name) AS n FROM categories c WHERE c.type=? ORDER BY (c.name='سایر'), c.id",[type]);
+const RESERVED=['انتقال','اصلاح موجودی'];
+const catRows=type=>all("SELECT c.id,c.name,(SELECT COUNT(*) FROM transactions t WHERE t.type=c.type AND t.category=c.name) AS n FROM categories c WHERE c.type=? AND c.name NOT IN ('انتقال','اصلاح موجودی') ORDER BY (c.name='سایر'), c.id",[type]);
 const categoriesFor=type=>catRows(type).map(r=>r.name);
 const subRows=catId=>all('SELECT s.id,s.name,(SELECT COUNT(*) FROM transactions t JOIN categories c ON c.id=s.category_id WHERE t.type=c.type AND t.category=c.name AND t.subcategory=s.name) AS n FROM subcategories s WHERE s.category_id=? ORDER BY s.id',[catId]);
 const subsFor=(type,cat)=>all('SELECT s.name FROM subcategories s JOIN categories c ON c.id=s.category_id WHERE c.type=? AND c.name=? ORDER BY s.id',[type,cat]).map(r=>r.name);
@@ -604,7 +605,7 @@ function fillSubs(type,cat,sel){
 function fillCats(type,sel,subSel){
   const s=$('#f-cat');if(!s)return;
   const cur=sel!==undefined?sel:s.value;
-  s.innerHTML=categoriesFor(type).map(c=>'<option value="'+esc(c)+'"'+(c===cur?' selected':'')+'>'+esc(c)+'</option>').join('')+'<option value="__new">+ دستهٔ جدید…</option>';
+  s.innerHTML=((l)=>{if(sel&&!l.includes(sel))l.push(sel);return l;})(categoriesFor(type)).map(c=>'<option value="'+esc(c)+'"'+(c===cur?' selected':'')+'>'+esc(c)+'</option>').join('')+'<option value="__new">+ دستهٔ جدید…</option>';
   const n=$('#f-newcat');if(n)n.hidden=s.value!=='__new';
   fillSubs(type,s.value,subSel);
   updateLitersVisibility();
@@ -741,7 +742,7 @@ function renderTxList(){
   box.innerHTML='<p class="count">'+fa(list.length)+' تراکنش — مبالغ به '+esc(unit())+(state.type!=='expense'?' — جمع درآمد: '+fmtNum(inc):'')+(state.type!=='income'?' — جمع هزینه: '+fmtNum(exp):'')+'</p>'
   +groups.map(g=>'<div class="day"><h3>'+fmtJLong(g.date)+' '+fa(parseJ(g.date).y)+'</h3><ul class="rows">'+g.items.map(t=>{
     const isIn=t.type==='income';
-    return '<li class="row"><span class="lead '+(isIn?'in':'out')+'" title="'+(isIn?'درآمد':'هزینه')+'">'+(isIn?ICON_UP:ICON_DN)+'</span><div class="mid"><b>'+esc(t.category)+(t.subcategory?' / '+esc(t.subcategory):'')+'</b><small>'+[t.note,t.liters?fmtLiters(t.liters)+' لیتر':'',multiAcc?acctName(t.account_id):''].filter(Boolean).join(' — ')+'</small></div><div class="amt '+(isIn?'in':'out')+'">'+fmtNum(t.amount)+'</div><div class="racts"><button class="btn txt" data-act="edit-tx" data-id="'+t.id+'">ویرایش</button><button class="btn txt d" data-act="del-tx" data-id="'+t.id+'">حذف</button></div></li>';
+    return '<li class="row"><span class="lead '+(isIn?'in':'out')+'" title="'+(isIn?'درآمد':'هزینه')+'">'+(isIn?ICON_UP:ICON_DN)+'</span><div class="mid"><b>'+esc(t.category)+(t.subcategory?' / '+esc(t.subcategory):'')+'</b><small>'+[t.note,t.liters?fmtLiters(t.liters)+' لیتر':'',multiAcc?acctName(t.account_id):''].filter(Boolean).map(esc).join(' — ')+'</small></div><div class="amt '+(isIn?'in':'out')+'">'+fmtNum(t.amount)+'</div><div class="racts"><button class="btn txt" data-act="edit-tx" data-id="'+t.id+'">ویرایش</button><button class="btn txt d" data-act="del-tx" data-id="'+t.id+'">حذف</button></div></li>';
   }).join('')+'</ul></div>').join('');
 }
 
@@ -812,6 +813,7 @@ function txDialog(id){
        if(!accId)throw new Error('حساب را انتخاب کنید.');
        let cat=String(fd.get('category')||'');
        if(cat==='__new'||!cat){cat=String(fd.get('newcat')||'').trim();if(!cat)throw new Error('نام دستهٔ جدید را وارد کنید.');}
+       if(RESERVED.includes(cat)&&!(t&&t.category===cat))throw new Error('این نام برای سیستم رزرو شده است.');
        if(amt<=0)throw new Error('مبلغ را وارد کنید.');
        const date=readDate(fd,'date');
        let sub=String(fd.get('subcategory')||'');
@@ -974,6 +976,7 @@ function viewCats(){
 function addCat(name){
   name=name.trim();
   if(!name){toast('نام دسته را وارد کنید.');return;}
+  if(RESERVED.includes(name)){toast('این نام برای سیستم رزرو شده است.');return;}
   if(all('SELECT 1 FROM categories WHERE type=? AND name=?',[state.catType,name]).length){toast('این دسته قبلاً وجود دارد.');return;}
   run('INSERT INTO categories(type,name) VALUES(?,?)',[state.catType,name]);
   render();toast('دسته اضافه شد');const i=$('#catname');if(i)i.focus();
@@ -986,6 +989,8 @@ function catDialog(id){
      onSubmit(fd){
        const nn=String(fd.get('catname')).trim();
        if(!nn)throw new Error('نام دسته را وارد کنید.');
+       if(c.name==='کارمزد بانکی')throw new Error('این دسته سیستمی است و نامش قابل تغییر نیست.');
+       if(RESERVED.includes(nn)||nn==='کارمزد بانکی')throw new Error('این نام برای سیستم رزرو شده است.');
        if(nn===c.name)return null;
        if(all('SELECT 1 FROM categories WHERE type=? AND name=? AND id<>?',[c.type,nn,c.id]).length)throw new Error('دستهٔ دیگری با این نام وجود دارد. برای ادغام، یکی را حذف کنید و تراکنش‌هایش را به دیگری منتقل کنید.');
        db.run('UPDATE transactions SET category=? WHERE type=? AND category=?',[nn,c.type,c.name]);
@@ -995,6 +1000,7 @@ function catDialog(id){
 }
 function delCat(id){
   const c=all('SELECT * FROM categories WHERE id=?',[id])[0];if(!c)return;
+  if(c.name==='کارمزد بانکی'){toast('این دستهٔ سیستمی قابل حذف نیست.');return;}
   const n=all('SELECT COUNT(*) AS n FROM transactions WHERE type=? AND category=?',[c.type,c.name])[0].n;
   const others=catRows(c.type).filter(r=>r.id!==id), nm='«'+esc(c.name)+'»';
   const subCount=subRows(id).length;
