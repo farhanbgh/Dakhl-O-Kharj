@@ -627,18 +627,22 @@ function budCard(inc,list){
   const head='<section class="sec"><h2>بودجه بر اساس موجودی<button class="btn txt" data-act="nav" data-view="set">تنظیم بودجه</button></h2>';
   const sav=budSav(),accs=acctRows().filter(a=>!a.archived);
   const bal=accs.filter(a=>!sav.has(a.id)).reduce((x,a)=>x+a.balance,0),savBal=accs.filter(a=>sav.has(a.id)).reduce((x,a)=>x+a.balance,0);
-  const summary='<p class="sub">موجودی قابل بودجه: <b>'+fmtNum(bal)+'</b> '+esc(unit())+(sav.size?' &middot; پس‌انداز: <b>'+fmtNum(savBal)+'</b>':'')+'</p>';
-  if(bal<=0)return head+summary+'<div class="calm">موجودی قابل بودجه صفر یا منفی است؛ تفکیکی برای نمایش وجود ندارد.</div></section>';
-  const sp={need:0,want:0,save:0,debt:0};for(const t of list)if(t.type==='expense')sp[budBucket(c,t.category)]+=t.amount;
-  if(sav.size){const ids=[...sav].filter(Number.isFinite).join(',');if(ids){const r=all("SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE -amount END),0) AS n FROM transactions WHERE category='انتقال' AND account_id IN ("+ids+") AND date BETWEEN ? AND ?",[jstr(state.ym.y,state.ym.m,1),jstr(state.ym.y,state.ym.m,31)])[0];sp.save+=Math.max(0,r?r.n:0);}}
-  const rows=[];let base=bal,note='درصدها روی موجودی حساب‌های غیرپس‌انداز اعمال شده است.';
-  if(c.mode==='rebuild'){const d=Math.min(Math.max(0,c.fixed-sp.debt),bal);base=bal-d;rows.push(['بدهی (قسط ثابت)','debt',d]);note='قسط ثابت '+fmtNum(c.fixed)+' '+esc(unit())+' ابتدا کنار گذاشته می‌شود (مانده‌ی قسط این ماه از موجودی کم می‌شود) و درصدها روی باقی‌مانده ('+fmtNum(base)+') اعمال می‌شود.';}
+  const sp={need:0,want:0,save:0,debt:0};let spNon=0;
+  for(const t of list)if(t.type==='expense'){sp[budBucket(c,t.category)]+=t.amount;if(!sav.has(t.account_id))spNon+=t.amount;}
+  let moved=0;const ids=[...sav].filter(Number.isFinite).join(',');
+  if(ids){const r=all("SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE -amount END),0) AS n FROM transactions WHERE category='انتقال' AND account_id IN ("+ids+") AND date BETWEEN ? AND ?",[jstr(state.ym.y,state.ym.m,1),jstr(state.ym.y,state.ym.m,31)])[0];moved=Math.max(0,r?r.n:0);}
+  sp.save+=moved;
+  const P=bal+spNon+moved;
+  const summary='<p class="sub">موجودی قابل بودجه: <b>'+fmtNum(bal)+'</b> '+esc(unit())+(sav.size?' &middot; پس‌انداز: <b>'+fmtNum(savBal)+'</b>':'')+' &middot; بودجهٔ این ماه: <b>'+fmtNum(Math.max(0,P))+'</b></p>';
+  if(P<=0)return head+summary+'<div class="calm">بودجهٔ این ماه صفر یا منفی است؛ تفکیکی برای نمایش وجود ندارد.</div></section>';
+  const rows=[];let base=P,note='درصدها روی بودجهٔ این ماه (موجودی فعلی + خرج‌شده + منتقل‌شده به پس‌انداز) اعمال می‌شود، تا خرج یا انتقال، سهم بقیهٔ سطل‌ها را تغییر ندهد.';
+  if(c.mode==='rebuild'){const F=Math.min(c.fixed,P);base=P-F;rows.push(['بدهی (قسط ثابت)','debt',F]);note='قسط ثابت '+fmtNum(c.fixed)+' '+esc(unit())+' ابتدا کنار گذاشته می‌شود و درصدها روی باقی‌مانده ('+fmtNum(base)+') اعمال می‌شود. '+note;}
   for(const [k,n] of BUD)rows.push([n+' ('+fa(c.p[k])+'٪)',k,Math.round(base*c.p[k]/100)]);
   return head+summary+'<div class="cats" style="margin-top:10px">'
-    +rows.map(([n,k,a])=>{
-      const u=sp[k],tot=a+u,w=tot>0?u/tot*100:0,col=(w>=100&&k!=='debt')?'var(--exp)':w>=90&&w<100?'var(--warn)':'var(--green)';
-      return '<div><div class="cat"><span>'+n+'</span><span class="t"><i style="width:'+w+'%;background:'+col+'"></i></span><span>'+fa(Math.round(w))+'٪</span></div><div class="sub" style="font-size:.8rem;margin-top:2px">قابل استفاده: <b>'+fmtNum(a)+'</b> &middot; '+(k==='save'&&sav.size?'منتقل‌شده/خرج‌شده در این ماه':'خرج‌شده در این ماه')+': <b>'+fmtNum(u)+'</b></div></div>';
-    }).join('')+'</div><p class="sub" style="margin-top:10px">نوار نشان می‌دهد چند درصد از بودجهٔ این ماهِ هر سطل (قابل‌استفاده + مصرف‌شده) مصرف شده است. '+note+'</p></section>';
+    +rows.map(([n,k,bud])=>{
+      const u=sp[k],w=bud>0?Math.min(100,u/bud*100):(u>0?100:0),left=bud-u,col=(u>bud&&k!=='debt')?'var(--exp)':(w>=90&&w<100)?'var(--warn)':'var(--green)';
+      return '<div><div class="cat"><span>'+n+'</span><span class="t"><i style="width:'+w+'%;background:'+col+'"></i></span><span>'+fa(Math.round(bud>0?u/bud*100:(u>0?100:0)))+'٪</span></div><div class="sub" style="font-size:.8rem;margin-top:2px">'+(left>=0?'قابل استفاده: <b>'+fmtNum(left)+'</b>':'بیش از سهم: <b class="exp">'+fmtNum(-left)+'</b>')+' &middot; '+(k==='save'&&sav.size?'منتقل‌شده/خرج‌شده در این ماه':'خرج‌شده در این ماه')+': <b>'+fmtNum(u)+'</b></div></div>';
+    }).join('')+'</div><p class="sub" style="margin-top:10px">'+note+'</p></section>';
 }
 function budSet(){
   const c=budCfg(),opt=(v,l,cur)=>'<option value="'+v+'"'+(v===cur?' selected':'')+'>'+l+'</option>';
